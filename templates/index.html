@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planify - Générateur de Planning Intelligent</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎯 PLANIFY</h1>
+            <p>Générateur de Planning Intelligent</p>
+        </header>
+
+        <main>
+            <section class="input-section">
+                <h2>🎤 Entrée Vocale Intelligente</h2>
+                <div class="voice-section">
+                    <button id="voiceBtn" class="voice-btn">🎤 Parler</button>
+                    <textarea id="voiceText" placeholder="Ou tapez: 'Lundi 9h étude, mardi 14h réunion projet, mercredi sport 18h...'" rows="3"></textarea>
+                    <button id="parseVoiceBtn">🧠 Analyser avec IA</button>
+                </div>
+                
+                <h2>➕ Ajouter créneaux manuellement</h2>
+                <form id="slotForm">
+                    <div class="form-group">
+                        <label for="day">Jour:</label>
+                        <select id="day" required>
+                            <option value="">Sélectionner un jour</option>
+                            <option value="lundi">Lundi</option>
+                            <option value="mardi">Mardi</option>
+                            <option value="mercredi">Mercredi</option>
+                            <option value="jeudi">Jeudi</option>
+                            <option value="vendredi">Vendredi</option>
+                            <option value="samedi">Samedi</option>
+                            <option value="dimanche">Dimanche</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="startTime">Heure de début:</label>
+                        <input type="time" id="startTime" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="endTime">Heure de fin:</label>
+                        <input type="time" id="endTime" required>
+                    </div>
+                    
+                    <button type="submit">Ajouter le créneau</button>
+                </form>
+            </section>
+
+            <section class="slots-section">
+                <h2>📋 Créneaux & Tâches</h2>
+                <div id="slotsList"></div>
+                <div id="tasksList"></div>
+                <div class="actions">
+                    <button id="generateBtn" disabled>🧠 Générer Planning IA</button>
+                    <button id="exportBtn" disabled>📥 Exporter JSON</button>
+                </div>
+            </section>
+
+            <section class="schedule-section">
+                <h2>📅 Calendrier Intelligent</h2>
+                <div id="suggestionsOutput"></div>
+                <div id="scheduleOutput"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
