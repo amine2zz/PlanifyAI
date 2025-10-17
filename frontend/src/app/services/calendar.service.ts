@@ -120,10 +120,6 @@ export class CalendarService {
   }
 
   // Advanced AI Features
-  getOptimalSchedule(preferences: any): Observable<any> {
-    return this.http.post<any>(`${this.apiUrl}/ai/optimal-schedule`, preferences);
-  }
-
   getChatResponse(message: string): Observable<any> {
     return this.http.post<any>(`${this.apiUrl}/ai/chat`, { message });
   }
