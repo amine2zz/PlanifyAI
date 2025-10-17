@@ -1,9 +1,11 @@
-import pytest
-from app import PlanifyGenerator
+# test_app.py
 
-class TestPlanifyGenerator:
+import pytest
+from app import SmartPlanifyGenerator
+
+class TestSmartPlanifyGenerator:
     def setup_method(self):
-        self.planify = PlanifyGenerator()
+        self.planify = SmartPlanifyGenerator()
     
     def test_parse_time_slot_valid(self):
         slot = self.planify.parse_time_slot('lundi', '09:00', '12:00')
@@ -17,13 +19,19 @@ class TestPlanifyGenerator:
     
     def test_generate_schedule(self):
         slots = [
-            {'day': 'lundi', 'start': '09:00', 'end': '12:00', 'duration': '3:00:00'},
-            {'day': 'mardi', 'start': '14:00', 'end': '18:00', 'duration': '4:00:00'}
+            {'day': 'lundi', 'start': '09:00', 'end': '12:00'},
+            {'day': 'mardi', 'start': '14:00', 'end': '18:00'}
         ]
         
-        schedule = self.planify.generate_schedule(slots)
+        tasks = [
+            {'type': 'étude', 'priority': 'high', 'duration': 120},
+            {'type': 'sport', 'priority': 'medium', 'duration': 90}
+        ]
+        
+        schedule = self.planify.generate_schedule(slots, tasks)
         
         assert schedule['total_slots'] == 2
-        assert len(schedule['schedule']['lundi']) == 1
-        assert len(schedule['schedule']['mardi']) == 1
-        assert schedule['schedule']['lundi'][0]['start'] == '09:00'
+        assert 'lundi' in schedule['calendar']
+        assert 'mardi' in schedule['calendar']
+        # Check if tasks have been scheduled
+        assert any(item['type'] == 'task' for item in schedule['calendar']['lundi'] + schedule['calendar']['mardi'])

@@ -1,344 +1,299 @@
-class SmartPlanifyApp {
-    constructor() {
-        this.slots = [];
-        this.tasks = [];
-        this.currentSchedule = null;
-        this.recognition = null;
-        this.initEventListeners();
-        this.initVoiceRecognition();
+// static/script.js (full)
+// Front-end logic to add slots, parse voice via server endpoint and use an AI chatbot
+
+let slots = []; // { day, start, end, duration }
+let tasks = []; // { type, text, priority, duration, day?, start?, end? }
+
+// DOM refs
+const slotForm = document.getElementById('slotForm');
+const slotsList = document.getElementById('slotsList');
+const tasksList = document.getElementById('tasksList');
+const parseVoiceBtn = document.getElementById('parseVoiceBtn');
+const voiceText = document.getElementById('voiceText');
+const generateBtn = document.getElementById('generateBtn');
+const exportBtn = document.getElementById('exportBtn');
+const suggestionsOutput = document.getElementById('suggestionsOutput');
+const scheduleOutput = document.getElementById('scheduleOutput');
+
+// Chatbot refs
+const chatbotToggle = document.getElementById('chatbotToggle');
+const chatbotPanel = document.getElementById('chatbotPanel');
+const chatHistory = document.getElementById('chatHistory');
+const chatInput = document.getElementById('chatInput');
+const chatSend = document.getElementById('chatSend');
+// const aiEnable is removed
+
+function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+function formatSlot(slot) { return `${capitalize(slot.day)} — ${slot.start} → ${slot.end}`; }
+
+function renderSlots() {
+    if (!slotsList) return;
+    if (slots.length === 0) {
+        slotsList.innerHTML = '<p>Aucun créneau ajouté.</p>';
+        generateBtn.disabled = true;
+        exportBtn.disabled = true;
+        return;
     }
+    generateBtn.disabled = false;
+    exportBtn.disabled = false;
+    let html = '<ul>' + slots.map((s, idx) => `\n<li>${formatSlot(s)} <button data-idx="${idx}" class="remove-slot">Supprimer</button></li>`).join('') + '\n</ul>';
+    slotsList.innerHTML = html;
+}
 
-    initEventListeners() {
-        document.getElementById('slotForm').addEventListener('submit', (e) => {
-            e.preventDefault();
-            this.addSlot();
-        });
-
-        document.getElementById('generateBtn').addEventListener('click', () => {
-            this.generateSchedule();
-        });
-
-        document.getElementById('exportBtn').addEventListener('click', () => {
-            this.exportSchedule();
-        });
-
-        document.getElementById('voiceBtn').addEventListener('click', () => {
-            this.toggleVoiceRecognition();
-        });
-
-        document.getElementById('parseVoiceBtn').addEventListener('click', () => {
-            this.parseVoiceInput();
-        });
+function renderTasks() {
+    if (!tasksList) return;
+    if (tasks.length === 0) {
+        tasksList.innerHTML = '<p>Aucune tâche ajoutée.</p>';
+        return;
     }
+    let html = '<ul>' + tasks.map((t, idx) => `\n<li>${t.type ? capitalize(t.type) : 'Tâche'}${t.day ? ' ('+capitalize(t.day)+')' : ''} — ${t.text || ''} <button data-idx="${idx}" class="remove-task">Supprimer</button></li>`).join('') + '\n</ul>';
+    tasksList.innerHTML = html;
+}
 
-    initVoiceRecognition() {
-        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-            this.recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-            this.recognition.lang = 'fr-FR';
-            this.recognition.continuous = true;
-            this.recognition.interimResults = true;
+function calculateDuration(start, end) {
+    const s = start.split(':').map(Number);
+    const e = end.split(':').map(Number);
+    const startDate = new Date(0,0,0,s[0],s[1]);
+    const endDate = new Date(0,0,0,e[0],e[1]);
+    const diffMs = endDate - startDate;
+    const minutes = diffMs / 60000;
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.floor(minutes % 60);
+    return `${hours}:${mins.toString().padStart(2, '0')}`;
+}
 
-            this.recognition.onresult = (event) => {
-                let transcript = '';
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    transcript += event.results[i][0].transcript;
-                }
-                document.getElementById('voiceText').value = transcript;
-            };
+// Add slot form handler
+if (slotForm) {
+    slotForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const day = document.getElementById('day').value;
+        const start = document.getElementById('startTime').value;
+        const end = document.getElementById('endTime').value;
+        if (!day || !start || !end) return alert('Remplissez tous les champs.');
+        if (end <= start) return alert("L'heure de fin doit être après l'heure de début.");
+        // The server-side will calculate duration and validate time format, but we keep a local one for display/consistency
+        const duration = calculateDuration(start, end); 
+        const slot = { day: day.toLowerCase(), start, end, duration };
+        slots.push(slot);
+        renderSlots();
+        slotForm.reset();
+    });
+}
 
-            this.recognition.onerror = (event) => {
-                console.error('Erreur reconnaissance vocale:', event.error);
-                this.stopVoiceRecognition();
-            };
-        } else {
-            document.getElementById('voiceBtn').disabled = true;
-            document.getElementById('voiceBtn').textContent = '🚫 Non supporté';
-        }
+// Remove handlers (delegation)
+document.addEventListener('click', (e) => {
+    if (e.target && e.target.matches('.remove-slot')) {
+        const idx = parseInt(e.target.dataset.idx);
+        slots.splice(idx, 1);
+        renderSlots();
     }
-
-    toggleVoiceRecognition() {
-        const btn = document.getElementById('voiceBtn');
-        
-        if (btn.classList.contains('recording')) {
-            this.stopVoiceRecognition();
-        } else {
-            this.startVoiceRecognition();
-        }
+    if (e.target && e.target.matches('.remove-task')) {
+        const idx = parseInt(e.target.dataset.idx);
+        tasks.splice(idx, 1);
+        renderTasks();
     }
+});
 
-    startVoiceRecognition() {
-        if (this.recognition) {
-            this.recognition.start();
-            const btn = document.getElementById('voiceBtn');
-            btn.classList.add('recording');
-            btn.textContent = '🛑 Arrêter';
-        }
-    }
-
-    stopVoiceRecognition() {
-        if (this.recognition) {
-            this.recognition.stop();
-            const btn = document.getElementById('voiceBtn');
-            btn.classList.remove('recording');
-            btn.textContent = '🎤 Parler';
-        }
-    }
-
-    async parseVoiceInput() {
-        const text = document.getElementById('voiceText').value;
-        if (!text.trim()) {
-            alert('Veuillez saisir ou enregistrer du texte');
-            return;
-        }
-
+// Voice parse: call server endpoint /api/voice-parse
+if (parseVoiceBtn) {
+    parseVoiceBtn.addEventListener('click', async () => {
+        const text = voiceText.value.trim();
+        if (!text) return alert('Saisissez du texte vocal ou tapé.');
         try {
-            const response = await fetch('/api/voice-parse', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+            const resp = await fetch('/api/voice-parse', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ text })
             });
-
-            const data = await response.json();
-            if (response.ok) {
-                this.tasks = data.tasks;
-                this.updateTasksList();
-                this.updateButtons();
-                alert(`${data.tasks.length} tâches détectées par l'IA!`);
+            const data = await resp.json();
+            if (data.error) return alert('Erreur: ' + data.error);
+            
+            // Clear tasks before adding parsed ones to prevent duplicates from multiple parses
+            tasks = tasks.filter(t => t.day); // Keep only tasks that already have a day assigned manually/previously
+            
+            if (Array.isArray(data.tasks) && data.tasks.length) {
+                // Attach parsed tasks to global tasks array.
+                data.tasks.forEach(t => tasks.push(t));
+                renderTasks();
+                voiceText.value = '';
+                alert(`Succès: ${data.tasks.length} tâche(s) analysée(s) et ajoutée(s).`);
             } else {
-                throw new Error(data.error);
+                alert('Aucune tâche détectée.');
             }
-        } catch (error) {
-            alert('Erreur analyse IA: ' + error.message);
+        } catch (err) {
+            alert('Erreur lors de l\'analyse vocale: ' + err.message);
         }
-    }
+    });
+}
 
-    addSlot() {
-        const day = document.getElementById('day').value;
-        const startTime = document.getElementById('startTime').value;
-        const endTime = document.getElementById('endTime').value;
-
-        if (!day || !startTime || !endTime) {
-            alert('Veuillez remplir tous les champs');
-            return;
-        }
-
-        if (startTime >= endTime) {
-            alert('L\'heure de fin doit être après l\'heure de début');
-            return;
-        }
-
-        const slot = { day, start: startTime, end: endTime };
-        this.slots.push(slot);
-        this.updateSlotsList();
-        this.clearForm();
-        this.updateButtons();
-    }
-
-    removeSlot(index) {
-        this.slots.splice(index, 1);
-        this.updateSlotsList();
-        this.updateButtons();
-    }
-
-    updateSlotsList() {
-        const slotsList = document.getElementById('slotsList');
-        
-        if (this.slots.length === 0) {
-            slotsList.innerHTML = '<p style="color: #a0aec0; font-style: italic;">Aucun créneau libre ajouté</p>';
-            return;
-        }
-
-        slotsList.innerHTML = '<h3>📅 Créneaux libres:</h3>' + this.slots.map((slot, index) => `
-            <div class="slot-item">
-                <div class="slot-info">
-                    <strong>${slot.day.charAt(0).toUpperCase() + slot.day.slice(1)}</strong>: 
-                    ${slot.start} - ${slot.end}
-                </div>
-                <button class="remove-btn" onclick="app.removeSlot(${index})">Supprimer</button>
-            </div>
-        `).join('');
-    }
-
-    updateTasksList() {
-        const tasksList = document.getElementById('tasksList');
-        
-        if (this.tasks.length === 0) {
-            tasksList.innerHTML = '';
-            return;
-        }
-
-        tasksList.innerHTML = '<h3>🎯 Tâches détectées:</h3>' + this.tasks.map((task, index) => `
-            <div class="task-item">
-                <div class="task-info">
-                    <strong>${task.type.charAt(0).toUpperCase() + task.type.slice(1)}</strong>
-                    <span class="task-priority priority-${task.priority}">${task.priority}</span>
-                    <div style="font-size: 12px; color: #666; margin-top: 4px;">
-                        Durée suggérée: ${task.duration} min
-                    </div>
-                </div>
-                <button class="remove-btn" onclick="app.removeTask(${index})">Supprimer</button>
-            </div>
-        `).join('');
-    }
-
-    removeTask(index) {
-        this.tasks.splice(index, 1);
-        this.updateTasksList();
-        this.updateButtons();
-    }
-
-    clearForm() {
-        document.getElementById('day').value = '';
-        document.getElementById('startTime').value = '';
-        document.getElementById('endTime').value = '';
-    }
-
-    updateButtons() {
-        const hasSlots = this.slots.length > 0;
-        document.getElementById('generateBtn').disabled = !hasSlots;
-        document.getElementById('exportBtn').disabled = !this.currentSchedule;
-    }
-
-    async generateSchedule() {
+// Generate Schedule
+if (generateBtn) {
+    generateBtn.addEventListener('click', async () => {
         try {
-            const voiceInput = document.getElementById('voiceText').value;
-            
-            const response = await fetch('/api/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    slots: this.slots,
-                    tasks: this.tasks,
-                    voice_input: voiceInput
-                })
+            const resp = await fetch('/api/generate', {
+                method: 'POST', 
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ slots, tasks }) // Send current slots and tasks
             });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Erreur lors de la génération');
+            const data = await resp.json();
+            
+            if (data.error) {
+                alert('Erreur de génération: ' + data.error);
+                return;
             }
-
-            this.currentSchedule = data;
-            this.displaySmartSchedule(data);
-            this.updateButtons();
-
-        } catch (error) {
-            alert('Erreur: ' + error.message);
+            
+            // Clear and update the tasks array with the one returned by the server (which includes parsed voice tasks)
+            tasks = data.tasks || [];
+            renderTasks();
+            
+            renderSchedule(data.calendar, data.suggestions);
+            
+        } catch (err) {
+            alert('Erreur lors de la génération du planning: ' + err.message);
         }
-    }
+    });
+}
 
-    displaySmartSchedule(schedule) {
-        this.displaySuggestions(schedule.suggestions || []);
-        this.displayCalendar(schedule.calendar || {});
-        
-        const output = document.getElementById('scheduleOutput');
-        output.innerHTML = `
-            <div class="schedule-info">
-                <p><strong>🤖 Planning IA généré:</strong> ${schedule.total_slots} créneaux</p>
-                <p><strong>📅 Généré le:</strong> ${new Date(schedule.generated_at).toLocaleString('fr-FR')}</p>
-                <p><strong>🧠 Tâches analysées:</strong> ${schedule.tasks?.length || 0}</p>
-            </div>
-        `;
-    }
-
-    displaySuggestions(suggestions) {
-        const output = document.getElementById('suggestionsOutput');
-        
+function renderSchedule(calendar, suggestions) {
+    // Render Suggestions
+    if (suggestionsOutput) {
         if (suggestions.length === 0) {
-            output.innerHTML = '';
-            return;
+            suggestionsOutput.innerHTML = '<p>Aucune suggestion d\'horaire pour les tâches restantes.</p>';
+        } else {
+            let html = '<h3>Suggestions IA:</h3><ul>' + 
+                suggestions.map(s => {
+                    const slot = s.suggested_time;
+                    return `<li><strong>${capitalize(s.task)}</strong>: ${capitalize(slot.day)} ${slot.start} → ${slot.end} (${s.reason})</li>`;
+                }).join('') + '</ul>';
+            suggestionsOutput.innerHTML = html;
         }
-
-        output.innerHTML = `
-            <div class="suggestions-section">
-                <h3>💡 Suggestions IA</h3>
-                ${suggestions.map(suggestion => `
-                    <div class="suggestion-item">
-                        <div class="suggestion-task">${suggestion.task.charAt(0).toUpperCase() + suggestion.task.slice(1)}</div>
-                        <div class="suggestion-time">
-                            📍 ${suggestion.suggested_time.day.charAt(0).toUpperCase() + suggestion.suggested_time.day.slice(1)} 
-                            ${suggestion.suggested_time.start} - ${suggestion.suggested_time.end}
-                        </div>
-                        <div class="suggestion-reason">💭 ${suggestion.reason}</div>
-                    </div>
-                `).join('')}
-            </div>
-        `;
     }
 
-    displayCalendar(calendar) {
-        const output = document.getElementById('scheduleOutput');
-        const days = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+    // Render Calendar
+    if (scheduleOutput) {
+        let html = '';
+        const daysOrder = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
         
-        const calendarHTML = `
-            <div class="schedule-grid">
-                ${days.map(day => {
-                    const dayItems = calendar[day] || [];
-                    return `
-                        <div class="day-schedule">
-                            <div class="day-title">${day.charAt(0).toUpperCase() + day.slice(1)}</div>
-                            ${dayItems.length > 0 
-                                ? dayItems.map(item => `
-                                    <div class="calendar-item calendar-${item.type}">
-                                        <strong>${item.title}</strong><br>
-                                        🕐 ${item.start} - ${item.end}
-                                        ${item.reason ? `<br><small>💭 ${item.reason}</small>` : ''}
-                                    </div>
-                                `).join('')
-                                : '<div class="empty-day">Journée libre</div>'
-                            }
-                        </div>
-                    `;
-                }).join('')}
-            </div>
-        `;
-
-        output.innerHTML += calendarHTML;
-    }
-
-    async exportSchedule() {
-        if (!this.currentSchedule) {
-            alert('Veuillez d\'abord générer un planning');
-            return;
-        }
-
-        try {
-            const response = await fetch('/api/export', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(this.currentSchedule)
-            });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Erreur lors de l\'export');
+        daysOrder.forEach(dayKey => {
+            const dayEvents = calendar[dayKey];
+            if (dayEvents && dayEvents.length > 0) {
+                html += `<h4>${capitalize(dayKey)}</h4><ul class="schedule-day">`;
+                dayEvents.forEach(event => {
+                    let className = event.type === 'free' ? 'slot-free' : 'slot-task';
+                    let text = event.title;
+                    if (event.type === 'task') {
+                        text = `✅ ${event.title} - ${event.start || ''}${event.start && event.end ? ' → ' + event.end : ''}`;
+                        if (event.reason) {
+                            text += ` <span class="small">(${event.reason})</span>`;
+                        } else if (event.text) {
+                            text = `📌 ${event.title} - ${event.text}`;
+                        }
+                    } else {
+                        text = `⏱️ ${event.title} (${event.start} → ${event.end})`;
+                    }
+                    html += `<li class="${className}">${text}</li>`;
+                });
+                html += '</ul>';
             }
-
-            // Download JSON file
-            const blob = new Blob([JSON.stringify(this.currentSchedule, null, 2)], {
-                type: 'application/json'
-            });
-            
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = data.filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-
-            alert('Planning exporté avec succès!');
-
-        } catch (error) {
-            alert('Erreur lors de l\'export: ' + error.message);
+        });
+        
+        if (html === '') {
+             scheduleOutput.innerHTML = '<p>Le planning généré est vide. Veuillez ajouter des créneaux libres et des tâches.</p>';
+        } else {
+             scheduleOutput.innerHTML = html;
         }
     }
 }
 
-// Initialize the smart app
-const app = new SmartPlanifyApp();
+
+// Export JSON
+if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+        const payload = { slots, tasks, exported_at: new Date().toISOString() };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `planning_${new Date().toISOString().replace(/[:.]/g,'-')}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+}
+
+// Chatbot UI toggle
+if (chatbotToggle) {
+    chatbotToggle.addEventListener('click', () => {
+        chatbotPanel.style.display = chatbotPanel.style.display === 'block' ? 'none' : 'block';
+        chatInput.focus();
+    });
+}
+
+// Removed: chatbotLocalRespond function (now fully AI-powered)
+
+function addChatEntry(text, who) {
+    const div = document.createElement('div');
+    div.className = 'chat-entry ' + (who === 'user' ? 'user' : 'bot');
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble ' + (who === 'user' ? 'user' : '');
+    bubble.innerText = text;
+    div.appendChild(bubble);
+    chatHistory.appendChild(div);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+// Chat send handler (AI only)
+if (chatSend) {
+    chatSend.addEventListener('click', async () => {
+        const q = chatInput.value.trim();
+        if (!q) return;
+        
+        addChatEntry(q, 'user');
+        chatInput.value = ''; // Clear input immediately
+        
+        // Call server AI endpoint
+        try {
+            // Note: Sending ALL current slots and tasks to give the AI full context
+            const resp = await fetch('/api/ai-assist', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ question: q, slots, tasks })
+            });
+            const data = await resp.json();
+
+            if (data.error) {
+                addChatEntry('❌ Erreur AI: ' + data.error, 'bot');
+            } else if (data.reply) {
+                const rep = data.reply; // expected {summary, items}
+                let display = '';
+                
+                // Start with the summary, which is the main response
+                if (rep.summary) display += rep.summary + '\n';
+                
+                // Add structured items if present
+                if (Array.isArray(rep.items) && rep.items.length) {
+                    display += '\n--- Détails ---\n';
+                    rep.items.forEach(it => {
+                        if (it.type === 'slot') {
+                            display += `• Créneau (libre) — ${it.day ? capitalize(it.day) + ': ' : ''}${it.start || ''}${it.start && it.end ? ' → ' + it.end : ''}${it.text ? ' — ' + it.text : ''}\n`;
+                        } else {
+                            // Tasks can have start/end times if fixed
+                            let time = it.start ? `${it.start}${it.end ? ' → ' + it.end : ''}` : '';
+                            display += `• Tâche (${it.type ? capitalize(it.type) : 'Général'}) — ${it.day ? capitalize(it.day) + ': ' : ''}${time} ${it.text || ''}\n`;
+                        }
+                    });
+                }
+                
+                addChatEntry(display.trim() || 'L\'IA n\'a retourné aucun contenu structuré.', 'bot');
+            } else {
+                addChatEntry('L\'IA n\'a retourné aucune réponse.', 'bot');
+            }
+        } catch (err) {
+            addChatEntry('Erreur de connexion au serveur AI: ' + err.message, 'bot');
+        }
+    });
+
+    chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); chatSend.click(); } });
+}
+
+// Initial render
+renderSlots();
+renderTasks();

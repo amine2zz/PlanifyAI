@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Planify - Générateur de Planning Intelligent</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* Chatbot styles (compact) */
+        .chatbot-container { position: fixed; right: 20px; bottom: 20px; width: 360px; max-width: calc(100% - 40px); z-index: 9999; font-family: inherit; }
+        .chatbot-toggle { background:#111827; color:#fff; padding:10px 14px; border-radius:12px; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.2); }
+        .chatbot-panel { margin-top:8px; background:#fff; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); overflow:hidden; display:none; }
+        .chat-history { max-height:300px; overflow:auto; padding:12px; font-size:14px; background:#fbfbfc; }
+        .chat-entry { margin-bottom:10px; }
+        .chat-entry.user { text-align:right; }
+        .chat-bubble { display:inline-block; padding:8px 10px; border-radius:8px; background:#f3f4f6; white-space:pre-wrap; }
+        .chat-bubble.user { background:#e0f2fe; }
+        .chat-controls { display:flex; gap:8px; padding:10px; border-top:1px solid #eee; }
+        .chat-controls input[type="text"] { flex:1; padding:8px; border:1px solid #ddd; border-radius:6px; }
+        .chat-controls button { padding:8px 10px; border-radius:6px; cursor:pointer; }
+        .chat-settings { display:flex; gap:8px; align-items:center; padding:8px 12px; border-bottom:1px solid #eee; }
+        .small { font-size:12px; color:#6b7280; }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -17,11 +33,11 @@
             <section class="input-section">
                 <h2>🎤 Entrée Vocale Intelligente</h2>
                 <div class="voice-section">
-                    <button id="voiceBtn" class="voice-btn">🎤 Parler</button>
+                    <button id="voiceBtn" class="voice-btn" disabled>🎤 Parler (Non implémenté)</button>
                     <textarea id="voiceText" placeholder="Ou tapez: 'Lundi 9h étude, mardi 14h réunion projet, mercredi sport 18h...'" rows="3"></textarea>
                     <button id="parseVoiceBtn">🧠 Analyser avec IA</button>
                 </div>
-                
+
                 <h2>➕ Ajouter créneaux manuellement</h2>
                 <form id="slotForm">
                     <div class="form-group">
@@ -37,17 +53,17 @@
                             <option value="dimanche">Dimanche</option>
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="startTime">Heure de début:</label>
                         <input type="time" id="startTime" required>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="endTime">Heure de fin:</label>
                         <input type="time" id="endTime" required>
                     </div>
-                    
+
                     <button type="submit">Ajouter le créneau</button>
                 </form>
             </section>
@@ -68,6 +84,20 @@
                 <div id="scheduleOutput"></div>
             </section>
         </main>
+    </div>
+
+    <div class="chatbot-container" id="chatbotContainer">
+        <div class="chatbot-toggle" id="chatbotToggle">💬 Chatbot</div>
+        <div class="chatbot-panel" id="chatbotPanel">
+            <div class="chat-settings">
+                <span class="small">Assistant IA (Nécessite une clé Gemini API)</span>
+            </div>
+            <div class="chat-history" id="chatHistory"></div>
+            <div class="chat-controls">
+                <input type="text" id="chatInput" placeholder="Pose une question, ex: 'Quelles tâches pour la semaine ?'">
+                <button id="chatSend">OK</button>
+            </div>
+        </div>
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
