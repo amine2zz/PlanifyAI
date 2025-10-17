@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { CalendarService } from '../../services/calendar.service';
 
 export type ViewMode = 'year' | 'month' | 'week' | 'day';
@@ -7,7 +8,7 @@ export type ViewMode = 'year' | 'month' | 'week' | 'day';
 @Component({
   selector: 'app-calendar',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="calendar-container">
       <div class="calendar-header">
@@ -23,8 +24,9 @@ export type ViewMode = 'year' | 'month' | 'week' | 'day';
           <h2>{{getTitle()}}</h2>
           <button (click)="navigate(1)">›</button>
         </div>
-        <div class="today-btn">
-          <button (click)="goToToday()">Today</button>
+        <div class="action-buttons">
+          <button class="add-event-btn" (click)="openAddEventModal()">+ Add Event</button>
+          <button class="today-btn" (click)="goToToday()">Today</button>
         </div>
       </div>
       
@@ -60,7 +62,12 @@ export type ViewMode = 'year' | 'month' | 'week' | 'day';
                  (click)="selectDay(day)">
               <span class="day-number">{{day.date}}</span>
               <div *ngIf="day.events" class="events">
-                <div *ngFor="let event of day.events" class="event">{{event.title}}</div>
+                <div *ngFor="let event of day.events" 
+                     class="event"
+                     [class]="'priority-' + event.priority"
+                     (click)="editEvent(event); $event.stopPropagation()">
+                  {{event.title}}
+                </div>
               </div>
             </div>
           </div>
@@ -80,7 +87,14 @@ export type ViewMode = 'year' | 'month' | 'week' | 'day';
               <div *ngFor="let hour of hours" class="time-slot">
                 <span class="time">{{hour}}:00</span>
                 <div class="hour-events">
-                  <div *ngFor="let day of getWeekDays()" class="day-slot"></div>
+                  <div *ngFor="let day of getWeekDays(); let dayIndex = index" class="day-slot">
+                    <div *ngFor="let event of getWeekDayEvents(day.fullDate, hour)" 
+                         class="week-event"
+                         [class]="'priority-' + event.priority"
+                         (click)="editEvent(event)">
+                      {{event.title}}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -95,8 +109,12 @@ export type ViewMode = 'year' | 'month' | 'week' | 'day';
             <div *ngFor="let hour of hours" class="hour-block">
               <div class="hour-label">{{hour}}:00</div>
               <div class="hour-content">
-                <div *ngFor="let event of getDayEvents(hour)" class="day-event">
-                  {{event.title}}
+                <div *ngFor="let event of getDayEvents(hour)" 
+                     class="day-event"
+                     [class]="'priority-' + event.priority"
+                     (click)="editEvent(event)">
+                  <div class="event-title">{{event.title}}</div>
+                  <div class="event-time">{{event.start_time}} - {{event.end_time}}</div>
                 </div>
               </div>
             </div>
@@ -109,6 +127,131 @@ export type ViewMode = 'year' | 'month' | 'week' | 'day';
         <div *ngFor="let suggestion of aiSuggestions" class="suggestion">
           <p>{{suggestion.text}}</p>
           <button (click)="applySuggestion(suggestion)">Apply</button>
+        </div>
+      </div>
+      
+      <!-- Add Event Modal -->
+      <div class="modal-overlay" *ngIf="showAddEventModal" (click)="closeAddEventModal()">
+        <div class="modal-content" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <h3>Add New Event</h3>
+            <button class="close-btn" (click)="closeAddEventModal()">×</button>
+          </div>
+          <form class="event-form" (ngSubmit)="saveNewEvent()">
+            <div class="form-group">
+              <label>Event Title *</label>
+              <input type="text" [(ngModel)]="newEvent.title" name="title" required placeholder="Enter event title">
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label>Date *</label>
+                <input type="date" [(ngModel)]="newEvent.date" name="date" required>
+              </div>
+              <div class="form-group">
+                <label>Start Time *</label>
+                <input type="time" [(ngModel)]="newEvent.startTime" name="startTime" required>
+              </div>
+              <div class="form-group">
+                <label>End Time *</label>
+                <input type="time" [(ngModel)]="newEvent.endTime" name="endTime" required>
+              </div>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label>Category</label>
+                <select [(ngModel)]="newEvent.category" name="category">
+                  <option value="general">General</option>
+                  <option value="meeting">Meeting</option>
+                  <option value="work">Work</option>
+                  <option value="personal">Personal</option>
+                  <option value="break">Break</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Priority</label>
+                <select [(ngModel)]="newEvent.priority" name="priority">
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label>Description</label>
+              <textarea [(ngModel)]="newEvent.description" name="description" placeholder="Optional description" rows="3"></textarea>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" class="cancel-btn" (click)="closeAddEventModal()">Cancel</button>
+              <button type="submit" class="save-btn">Save Event</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      
+      <!-- Edit Event Modal -->
+      <div class="modal-overlay" *ngIf="showEditEventModal" (click)="closeEditEventModal()">
+        <div class="modal-content" (click)="$event.stopPropagation()">
+          <div class="modal-header">
+            <h3>Edit Event</h3>
+            <button class="close-btn" (click)="closeEditEventModal()">×</button>
+          </div>
+          <form class="event-form" (ngSubmit)="updateEvent()">
+            <div class="form-group">
+              <label>Event Title *</label>
+              <input type="text" [(ngModel)]="editingEvent.title" name="title" required>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label>Date *</label>
+                <input type="date" [(ngModel)]="editingEvent.date" name="date" required>
+              </div>
+              <div class="form-group">
+                <label>Start Time *</label>
+                <input type="time" [(ngModel)]="editingEvent.start_time" name="startTime" required>
+              </div>
+              <div class="form-group">
+                <label>End Time *</label>
+                <input type="time" [(ngModel)]="editingEvent.end_time" name="endTime" required>
+              </div>
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label>Category</label>
+                <select [(ngModel)]="editingEvent.category" name="category">
+                  <option value="general">General</option>
+                  <option value="meeting">Meeting</option>
+                  <option value="work">Work</option>
+                  <option value="personal">Personal</option>
+                  <option value="break">Break</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Priority</label>
+                <select [(ngModel)]="editingEvent.priority" name="priority">
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label>Description</label>
+              <textarea [(ngModel)]="editingEvent.description" name="description" rows="3"></textarea>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" class="delete-btn" (click)="deleteEvent()">Delete</button>
+              <button type="button" class="cancel-btn" (click)="closeEditEventModal()">Cancel</button>
+              <button type="submit" class="save-btn">Update Event</button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
@@ -164,6 +307,25 @@ export type ViewMode = 'year' | 'month' | 'week' | 'day';
     
     .navigation button:hover {
       background: #e9ecef;
+    }
+    
+    .action-buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+    
+    .add-event-btn {
+      padding: 0.5rem 1rem;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    
+    .add-event-btn:hover {
+      background: #5a6fd8;
     }
     
     .today-btn button {
@@ -394,6 +556,189 @@ export type ViewMode = 'year' | 'month' | 'week' | 'day';
       border-radius: 4px;
       cursor: pointer;
     }
+    
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.5rem;
+      border-bottom: 1px solid #e9ecef;
+    }
+    
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: #666;
+    }
+    
+    .event-form {
+      padding: 1.5rem;
+    }
+    
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+    
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      box-sizing: border-box;
+    }
+    
+    .form-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: flex-end;
+      margin-top: 2rem;
+    }
+    
+    .cancel-btn, .save-btn {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    
+    .cancel-btn {
+      background: #6c757d;
+      color: white;
+    }
+    
+    .save-btn {
+      background: #667eea;
+      color: white;
+      font-weight: 600;
+    }
+    
+    .delete-btn {
+      background: #dc3545;
+      color: white;
+    }
+    
+    .day-event {
+      background: #667eea;
+      color: white;
+      padding: 0.5rem;
+      border-radius: 4px;
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .day-event:hover {
+      background: #5a6fd8;
+      transform: translateY(-1px);
+    }
+    
+    .day-event.priority-high {
+      background: #dc3545;
+    }
+    
+    .day-event.priority-medium {
+      background: #ffc107;
+      color: #333;
+    }
+    
+    .day-event.priority-low {
+      background: #28a745;
+    }
+    
+    .event-title {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    
+    .event-time {
+      font-size: 0.8rem;
+      opacity: 0.9;
+    }
+    
+    .event.priority-high {
+      background: #dc3545;
+    }
+    
+    .event.priority-medium {
+      background: #ffc107;
+      color: #333;
+    }
+    
+    .event.priority-low {
+      background: #28a745;
+    }
+    
+    .week-event {
+      background: #667eea;
+      color: white;
+      padding: 0.25rem 0.5rem;
+      border-radius: 3px;
+      margin-bottom: 0.25rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+    
+    .week-event:hover {
+      background: #5a6fd8;
+      transform: translateY(-1px);
+    }
+    
+    .week-event.priority-high {
+      background: #dc3545;
+    }
+    
+    .week-event.priority-medium {
+      background: #ffc107;
+      color: #333;
+    }
+    
+    .week-event.priority-low {
+      background: #28a745;
+    }
+    
+    .day-slot {
+      background: #f8f9fa;
+      border-right: 1px solid #e9ecef;
+      min-height: 60px;
+      padding: 0.25rem;
+    }
   `]
 })
 export class CalendarComponent implements OnInit {
@@ -414,16 +759,37 @@ export class CalendarComponent implements OnInit {
   
   events: any[] = [];
   aiSuggestions: any[] = [];
+  showAddEventModal = false;
+  showEditEventModal = false;
+  editingEvent: any = null;
+  newEvent = {
+    title: '',
+    date: '',
+    startTime: '',
+    endTime: '',
+    category: 'general',
+    priority: 'medium',
+    description: ''
+  };
 
   constructor(private calendarService: CalendarService) {}
 
   ngOnInit() {
     this.loadEvents();
     this.generateAISuggestions();
+    this.addSampleEvents();
   }
 
   setView(mode: ViewMode) {
     this.currentView = mode;
+    // Ensure selectedDate is set to current context
+    if (mode === 'day' || mode === 'week') {
+      if (!this.selectedDate || 
+          this.selectedDate.getFullYear() !== this.currentYear || 
+          this.selectedDate.getMonth() !== this.currentMonth) {
+        this.selectedDate = new Date(this.currentYear, this.currentMonth, new Date().getDate());
+      }
+    }
   }
 
   navigate(direction: number) {
@@ -497,12 +863,19 @@ export class CalendarComponent implements OnInit {
     const currentDate = new Date(startDate);
     
     for (let i = 0; i < 42; i++) {
+      const dayEvents = this.events.filter(event => {
+        const eventDate = new Date(event.date);
+        return eventDate.getFullYear() === currentDate.getFullYear() &&
+               eventDate.getMonth() === currentDate.getMonth() &&
+               eventDate.getDate() === currentDate.getDate();
+      });
+      
       const day = {
         date: currentDate.getDate(),
         isCurrentMonth: currentDate.getMonth() === this.currentMonth,
         isToday: this.isToday(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()),
-        hasEvents: this.hasEvents(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate()),
-        events: this.getDayEvents(currentDate.getHours())
+        hasEvents: dayEvents.length > 0,
+        events: dayEvents
       };
       days.push(day);
       currentDate.setDate(currentDate.getDate() + 1);
@@ -512,7 +885,9 @@ export class CalendarComponent implements OnInit {
   }
 
   getWeekDays(): any[] {
-    const startOfWeek = new Date(this.selectedDate);
+    // Use current month/year context for week view
+    const referenceDate = new Date(this.currentYear, this.currentMonth, this.selectedDate.getDate());
+    const startOfWeek = new Date(referenceDate);
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     
     const days = [];
@@ -522,6 +897,7 @@ export class CalendarComponent implements OnInit {
       days.push({
         name: this.weekdays[i],
         date: day.getDate(),
+        fullDate: day.toISOString().split('T')[0],
         isToday: this.isToday(day.getFullYear(), day.getMonth(), day.getDate())
       });
     }
@@ -545,9 +921,13 @@ export class CalendarComponent implements OnInit {
   }
 
   getDayEvents(hour: number): any[] {
+    const currentDateStr = this.selectedDate.toISOString().split('T')[0];
     return this.events.filter(event => {
-      const eventDate = new Date(event.date);
-      return eventDate.getHours() === hour;
+      if (event.start_time && event.date === currentDateStr) {
+        const eventHour = parseInt(event.start_time.split(':')[0]);
+        return eventHour === hour;
+      }
+      return false;
     });
   }
 
@@ -568,5 +948,147 @@ export class CalendarComponent implements OnInit {
   applySuggestion(suggestion: any) {
     console.log('Applying suggestion:', suggestion);
     // Implement AI suggestion logic
+  }
+
+  addSampleEvents() {
+    // Add sample events for demonstration
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    this.events = [
+      {
+        id: 1,
+        title: 'Team Standup',
+        date: today.toISOString().split('T')[0],
+        start_time: '09:00',
+        end_time: '09:30',
+        category: 'meeting',
+        priority: 'medium'
+      },
+      {
+        id: 2,
+        title: 'Project Planning',
+        date: today.toISOString().split('T')[0],
+        start_time: '14:00',
+        end_time: '15:30',
+        category: 'meeting',
+        priority: 'high'
+      },
+      {
+        id: 3,
+        title: 'Client Call',
+        date: tomorrow.toISOString().split('T')[0],
+        start_time: '10:00',
+        end_time: '11:00',
+        category: 'meeting',
+        priority: 'high'
+      },
+      {
+        id: 4,
+        title: 'Focus Work',
+        date: tomorrow.toISOString().split('T')[0],
+        start_time: '15:00',
+        end_time: '17:00',
+        category: 'work',
+        priority: 'medium'
+      }
+    ];
+  }
+
+  openAddEventModal() {
+    this.showAddEventModal = true;
+    // Set default date to today
+    const today = new Date();
+    this.newEvent.date = today.toISOString().split('T')[0];
+    // Set default time to next hour
+    const nextHour = new Date();
+    nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
+    this.newEvent.startTime = nextHour.toTimeString().slice(0, 5);
+    nextHour.setHours(nextHour.getHours() + 1);
+    this.newEvent.endTime = nextHour.toTimeString().slice(0, 5);
+  }
+
+  closeAddEventModal() {
+    this.showAddEventModal = false;
+    this.resetNewEvent();
+  }
+
+  resetNewEvent() {
+    this.newEvent = {
+      title: '',
+      date: '',
+      startTime: '',
+      endTime: '',
+      category: 'general',
+      priority: 'medium',
+      description: ''
+    };
+  }
+
+  saveNewEvent() {
+    if (this.newEvent.title && this.newEvent.date && this.newEvent.startTime && this.newEvent.endTime) {
+      const event = {
+        id: this.events.length + 1,
+        title: this.newEvent.title,
+        date: this.newEvent.date,
+        start_time: this.newEvent.startTime,
+        end_time: this.newEvent.endTime,
+        category: this.newEvent.category,
+        priority: this.newEvent.priority,
+        description: this.newEvent.description
+      };
+      
+      this.events.push(event);
+      this.closeAddEventModal();
+      
+      alert('Event added successfully!');
+    } else {
+      alert('Please fill in all required fields.');
+    }
+  }
+
+  editEvent(event: any) {
+    this.editingEvent = { ...event }; // Create a copy
+    this.showEditEventModal = true;
+  }
+
+  closeEditEventModal() {
+    this.showEditEventModal = false;
+    this.editingEvent = null;
+  }
+
+  updateEvent() {
+    if (this.editingEvent && this.editingEvent.title) {
+      const index = this.events.findIndex(e => e.id === this.editingEvent.id);
+      if (index !== -1) {
+        this.events[index] = { ...this.editingEvent };
+        this.closeEditEventModal();
+        alert('Event updated successfully!');
+      }
+    } else {
+      alert('Please fill in all required fields.');
+    }
+  }
+
+  deleteEvent() {
+    if (this.editingEvent && confirm('Are you sure you want to delete this event?')) {
+      const index = this.events.findIndex(e => e.id === this.editingEvent.id);
+      if (index !== -1) {
+        this.events.splice(index, 1);
+        this.closeEditEventModal();
+        alert('Event deleted successfully!');
+      }
+    }
+  }
+
+  getWeekDayEvents(date: string, hour: number): any[] {
+    return this.events.filter(event => {
+      if (event.date === date && event.start_time) {
+        const eventHour = parseInt(event.start_time.split(':')[0]);
+        return eventHour === hour;
+      }
+      return false;
+    });
   }
 }

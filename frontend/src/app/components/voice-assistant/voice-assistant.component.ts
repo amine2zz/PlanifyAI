@@ -328,19 +328,77 @@ export class VoiceAssistantComponent implements OnInit, OnDestroy {
   }
 
   processVoiceInput(transcript: string) {
-    // Send to AI backend for processing
+    // Process locally if backend not available
+    this.isProcessing = true;
+    
+    // Try backend first
     this.calendarService.processVoiceCommand(transcript).subscribe({
       next: (interpretation) => {
-        this.aiInterpretation = interpretation;
+        this.aiInterpretation = interpretation.event || interpretation;
         this.isProcessing = false;
-        this.speakResponse(`I understood: ${interpretation.title} on ${interpretation.date} at ${interpretation.time}`);
+        this.speakResponse(`I understood: ${this.aiInterpretation.title} on ${this.aiInterpretation.date} at ${this.aiInterpretation.time}`);
       },
       error: (error) => {
-        console.error('Voice processing error:', error);
-        this.isProcessing = false;
-        this.speakResponse("Sorry, I couldn't understand that. Please try again.");
+        console.log('Backend not available, processing locally...');
+        // Fallback to local processing
+        this.processVoiceLocally(transcript);
       }
     });
+  }
+
+  processVoiceLocally(transcript: string) {
+    const interpretation = this.parseVoiceCommand(transcript);
+    this.aiInterpretation = interpretation;
+    this.isProcessing = false;
+    this.speakResponse(`I understood: ${interpretation.title} on ${interpretation.date} at ${interpretation.time}`);
+  }
+
+  parseVoiceCommand(transcript: string): any {
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    // Extract title (remove command words)
+    let title = transcript
+      .replace(/schedule|add|create|book|set up|plan/gi, '')
+      .replace(/tomorrow|today|at \d+|on \w+/gi, '')
+      .trim();
+    
+    if (!title) title = 'New Event';
+    
+    // Extract date
+    let date = today.toISOString().split('T')[0];
+    if (transcript.toLowerCase().includes('tomorrow')) {
+      date = tomorrow.toISOString().split('T')[0];
+    }
+    
+    // Extract time
+    let time = '09:00';
+    const timeMatch = transcript.match(/(\d{1,2})\s*(am|pm|:\d{2})/i);
+    if (timeMatch) {
+      let hour = parseInt(timeMatch[1]);
+      const period = timeMatch[2].toLowerCase();
+      
+      if (period.includes('pm') && hour !== 12) hour += 12;
+      if (period.includes('am') && hour === 12) hour = 0;
+      
+      time = `${hour.toString().padStart(2, '0')}:00`;
+    }
+    
+    // Determine category
+    let category = 'general';
+    if (transcript.toLowerCase().includes('meeting')) category = 'meeting';
+    if (transcript.toLowerCase().includes('lunch')) category = 'personal';
+    if (transcript.toLowerCase().includes('work')) category = 'work';
+    
+    return {
+      title: title.charAt(0).toUpperCase() + title.slice(1),
+      date: date,
+      time: time,
+      duration: 60,
+      category: category,
+      priority: 'medium'
+    };
   }
 
   speakResponse(text: string) {
