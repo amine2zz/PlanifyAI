@@ -130,8 +130,14 @@ export class CalendarService {
 
   // Utility Methods
   private loadEvents() {
-    this.getEvents().subscribe(events => {
-      this.eventsSubject.next(events);
+    this.getEvents().subscribe({
+      next: (events) => {
+        console.log('Calendar service loaded events:', events);
+        this.eventsSubject.next(events);
+      },
+      error: (error) => {
+        console.log('Backend not available, using local events:', error);
+      }
     });
   }
 
