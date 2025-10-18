@@ -1,0 +1,35 @@
+.resume-container {
+  background: #f9fafc;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  max-width: 700px;
+  margin: 40px auto;
+  font-family: 'Inter', sans-serif;
+}
+
+h2, h3 {
+  color: #333;
+  font-weight: 600;
+}
+
+blockquote {
+  font-style: italic;
+  color: #555;
+  border-left: 3px solid #4a90e2;
+  margin: 10px 0;
+  padding-left: 10px;
+}
+
+.loading {
+  text-align: center;
+  color: #777;
+  margin-top: 50px;
+}
+
+.error {
+  text-align: center;
+  color: #e63946;
+  font-weight: 600;
+  margin-top: 50px;
+}

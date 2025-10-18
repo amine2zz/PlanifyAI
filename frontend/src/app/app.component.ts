@@ -1,11 +1,10 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { CalendarComponent } from './components/calendar/calendar.component';
+import { RouterOutlet } from '@angular/router';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, CalendarComponent],
+  imports: [RouterOutlet],
   template: `
     <div class="app">
       <header>
@@ -13,7 +12,7 @@ import { CalendarComponent } from './components/calendar/calendar.component';
         <p>Smart Calendar with Voice Commands</p>
       </header>
       <main>
-        <app-calendar></app-calendar>
+        <router-outlet></router-outlet>
       </main>
     </div>
   `,
@@ -25,6 +24,4 @@ import { CalendarComponent } from './components/calendar/calendar.component';
     main { padding: 2rem; }
   `]
 })
-export class AppComponent {
-  title = 'PlanifyAI';
-}
+export class AppComponent {}
