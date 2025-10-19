@@ -559,7 +559,7 @@ export class CalendarComponent implements OnInit {
 
   loadAnalytics() {
     this.calendarService.getAnalytics().subscribe({
-      next: (data) => this.analytics = data,
+      next: (data: any) => this.analytics = data,
       error: () => console.log('Analytics not available')
     });
   }

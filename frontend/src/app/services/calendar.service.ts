@@ -43,8 +43,8 @@ export class CalendarService {
   }
 
   // AI Features
-  getAISuggestions(): Observable<any> {
-    return this.http.get<any>(`${this.apiUrl}/ai/suggestions`);
+  getAISuggestions(): Observable<{suggestions: any[], totalEvents: number, analysisDate: string}> {
+    return this.http.get<{suggestions: any[], totalEvents: number, analysisDate: string}>(`${this.apiUrl}/ai/suggestions`);
   }
 
   applySuggestion(suggestion: any): Observable<any> {

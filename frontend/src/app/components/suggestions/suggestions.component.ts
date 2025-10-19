@@ -620,13 +620,13 @@ export class SuggestionsComponent implements OnInit {
   loadSuggestions() {
     this.loading = true;
     this.calendarService.getAISuggestions().subscribe({
-      next: (response: SuggestionsResponse) => {
+      next: (response: {suggestions: any[], totalEvents: number, analysisDate: string}) => {
         this.suggestions = response.suggestions;
         this.totalEvents = response.totalEvents;
         this.analysisDate = response.analysisDate;
         this.loading = false;
       },
-      error: (error) => {
+      error: (error: any) => {
         console.error('Error loading suggestions:', error);
         this.loading = false;
       }
@@ -691,7 +691,7 @@ export class SuggestionsComponent implements OnInit {
     if (this.currentSuggestion) {
       this.applying = true;
       this.calendarService.applySuggestion(this.currentSuggestion).subscribe({
-        next: (response) => {
+        next: (response: any) => {
           this.applying = false;
           
           let message = `✅ Success: ${response.message}`;
@@ -709,7 +709,7 @@ export class SuggestionsComponent implements OnInit {
           this.closeApplyModal();
           setTimeout(() => this.loadSuggestions(), 1000);
         },
-        error: (error) => {
+        error: (error: any) => {
           this.applying = false;
           console.error('Error applying suggestion:', error);
           alert(`❌ Error: ${error.error?.error || 'Failed to apply suggestion'}`);
