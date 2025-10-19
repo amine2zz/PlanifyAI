@@ -1,12 +1,14 @@
+// src/app/components/calendar/calendar.component.ts
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpClientModule } from '@angular/common/http';
+import { ChatbotComponent } from 'src/app/components/chatbot/chatbot';
 
 @Component({
   selector: 'app-calendar',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, HttpClientModule, ChatbotComponent],
   template: `
     <div class="calendar-container">
       <div class="header">
@@ -113,6 +115,7 @@ import { HttpClient } from '@angular/common/http';
         </div>
       </div>
       
+      <!-- Keep existing voice assistant UI (unchanged) -->
       <div class="voice-assistant">
         <div class="voice-header">
           <h3>🎤 AI Voice Assistant</h3>
@@ -262,6 +265,26 @@ import { HttpClient } from '@angular/common/http';
         </div>
       </div>
     </div>
+
+    <!-- Chatbot floating button -->
+    <div class="chatbot-bubble" (click)="toggleChatbot()" [attr.aria-expanded]="showChatbot">
+      <div class="bubble-icon">💬</div>
+      <div class="bubble-label">Assistant</div>
+    </div>
+
+    <!-- Chatbot modal/panel -->
+    <div *ngIf="showChatbot" class="chatbot-panel-overlay" (click)="closeChatbot()">
+      <div class="chatbot-panel" (click)="$event.stopPropagation()">
+        <div class="chat-panel-header">
+          <h4>Planify Assistant</h4>
+          <button class="close-chat" (click)="closeChatbot()">×</button>
+        </div>
+        <div class="chat-panel-body">
+          <!-- Pass events to the chatbot as tasks so it can answer about them -->
+          <app-chatbot [tasks]="events"></app-chatbot>
+        </div>
+      </div>
+    </div>
   `,
   styles: [`
     .calendar-container { max-width: 1400px; margin: 0 auto; padding: 1rem; }
@@ -364,6 +387,61 @@ import { HttpClient } from '@angular/common/http';
     .modal-footer { display: flex; gap: 1rem; justify-content: flex-end; padding: 1.5rem; border-top: 1px solid #eee; }
     .delete-btn { background: #dc3545; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 6px; cursor: pointer; }
     .save-btn { background: #28a745; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 6px; cursor: pointer; }
+    
+    /* Chat bubble */
+    .chatbot-bubble {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 1200;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+      color: white;
+      padding: 10px 14px;
+      border-radius: 999px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      cursor: pointer;
+      user-select: none;
+    }
+    .bubble-icon { font-size: 20px; }
+    .bubble-label { font-weight: 700; font-size: 14px; }
+
+    /* Chat panel overlay + panel */
+    .chatbot-panel-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 1250;
+      display: flex;
+      align-items: flex-end;
+      justify-content: flex-end;
+      padding: 20px;
+    }
+    .chatbot-panel {
+      width: 380px;
+      max-height: 92vh;
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+    }
+    .chat-panel-header {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid #eee;
+    }
+    .chat-panel-body {
+      padding: 12px;
+      overflow: auto;
+      background: #fafafa;
+    }
+    .close-chat { background: none; border: none; font-size: 20px; cursor: pointer; }
   `]
 })
 export class CalendarComponent implements OnInit {
@@ -379,6 +457,10 @@ export class CalendarComponent implements OnInit {
   showDashboard = false;
   editingEvent: any = null;
   
+  // Chatbot UI state
+  showChatbot = false;
+
+  // voice assistant state (kept)
   isListening = false;
   isProcessing = false;
   lastCommand = '';
@@ -394,6 +476,7 @@ export class CalendarComponent implements OnInit {
     this.initVoice();
   }
 
+  /* Calendar methods (unchanged) */
   setView(view: string) {
     this.currentView = view;
     if (view === 'Day') {
@@ -558,6 +641,16 @@ export class CalendarComponent implements OnInit {
     }
   }
 
+  /* Chatbot UI methods */
+  toggleChatbot() {
+    this.showChatbot = !this.showChatbot;
+  }
+
+  closeChatbot() {
+    this.showChatbot = false;
+  }
+
+  /* Voice assistant code (kept as-is) */
   initVoice() {
     if ('webkitSpeechRecognition' in window) {
       this.recognition = new (window as any).webkitSpeechRecognition();
