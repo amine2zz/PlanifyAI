@@ -2,11 +2,12 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CalendarService } from '../../services/calendar.service';
+import { ChatbotComponent } from '../chatbot/chatbot.component';
 
 @Component({
   selector: 'app-calendar',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ChatbotComponent],
   template: `
     <div class="calendar-container">
       <div class="header">
@@ -275,6 +276,9 @@ import { CalendarService } from '../../services/calendar.service';
         </div>
       </div>
     </div>
+
+    <!-- Chatbot Component -->
+    <app-chatbot></app-chatbot>
   `,
   styles: [`
     .calendar-container { max-width: 1400px; margin: 0 auto; padding: 1rem; }
@@ -635,54 +639,112 @@ export class CalendarComponent implements OnInit {
   }
 
   initVoice() {
-    if ('webkitSpeechRecognition' in window) {
-      this.recognition = new (window as any).webkitSpeechRecognition();
-      this.recognition.continuous = false;
-      this.recognition.interimResults = false;
-      
-      this.recognition.onstart = () => {
-        this.isListening = true;
-        this.isProcessing = false;
-      };
-      
-      this.recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        this.lastCommand = transcript;
-        this.isListening = false;
-        this.isProcessing = true;
-        this.recognition.stop();
-        this.processVoiceCommand(transcript);
-      };
-      
-      this.recognition.onend = () => {
-        this.isListening = false;
-      };
-      
-      this.recognition.onerror = () => {
-        this.isListening = false;
-        this.isProcessing = false;
-      };
+    try {
+      if ('webkitSpeechRecognition' in window) {
+        this.recognition = new (window as any).webkitSpeechRecognition();
+        this.recognition.continuous = false;
+        this.recognition.interimResults = true;
+        this.recognition.lang = 'fr-FR';
+        
+        this.recognition.onstart = () => {
+          console.log('Speech recognition started');
+          this.isListening = true;
+          this.isProcessing = false;
+        };
+        
+        this.recognition.onresult = (event: any) => {
+          console.log('Speech recognition result:', event);
+          let transcript = '';
+          for (let i = 0; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+              transcript += event.results[i][0].transcript;
+            } else {
+              // Store interim results in case user stops manually
+              this.lastCommand = event.results[i][0].transcript;
+            }
+          }
+          if (transcript) {
+            this.lastCommand = transcript;
+            this.isListening = false;
+            this.isProcessing = true;
+            this.processVoiceCommand(transcript);
+          }
+        };
+        
+        this.recognition.onend = () => {
+          console.log('Speech recognition ended');
+          this.isListening = false;
+        };
+        
+        this.recognition.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error);
+          this.isListening = false;
+          this.isProcessing = false;
+        };
+        
+        console.log('Speech recognition initialized successfully');
+      } else if ('SpeechRecognition' in window) {
+        this.recognition = new (window as any).SpeechRecognition();
+        // Same setup as above
+        console.log('Using standard SpeechRecognition');
+      } else {
+        console.warn('Speech recognition not supported in this browser');
+      }
+    } catch (error) {
+      console.error('Error initializing speech recognition:', error);
     }
   }
 
   toggleVoice() {
+    if (!this.recognition) {
+      console.error('Speech recognition not available');
+      return;
+    }
+    
     if (this.isListening) {
+      this.isListening = false;
+      this.isProcessing = true;
       this.recognition.stop();
+      // Process any partial results when manually stopped
+      setTimeout(() => {
+        if (this.lastCommand && this.lastCommand.trim()) {
+          console.log('Processing manual stop command:', this.lastCommand);
+          this.processVoiceCommand(this.lastCommand);
+        } else {
+          console.log('No command to process');
+          this.isProcessing = false;
+        }
+      }, 100);
     } else {
       this.isListening = true;
       this.voiceResult = null;
+      this.lastCommand = '';
       this.recognition.start();
     }
   }
 
   processVoiceCommand(transcript: string) {
+    console.log('Processing voice command:', transcript);
     this.calendarService.processVoiceCommand(transcript).subscribe({
       next: (result: any) => {
+        console.log('Voice result:', result);
         this.voiceResult = result;
         this.isProcessing = false;
       },
-      error: () => this.isProcessing = false
+      error: (error) => {
+        console.error('Voice processing error:', error);
+        this.isProcessing = false;
+        this.voiceResult = null;
+      }
     });
+    
+    // Timeout fallback
+    setTimeout(() => {
+      if (this.isProcessing) {
+        console.log('Voice processing timeout');
+        this.isProcessing = false;
+      }
+    }, 10000);
   }
 
   onTranscriptEdit() {

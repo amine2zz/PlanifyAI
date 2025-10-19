@@ -4,6 +4,10 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 from voice_ai import VoiceAI
 from ai_suggestions_enhanced import AICalendarSuggestions
+import json
+import os
+import requests
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -314,6 +318,98 @@ def apply_suggestion_to_database(suggestion):
         return {'message': f'Created recurring events for next 4 weeks', 'created_dates': created_events}
     
     return {'error': 'Suggestion type not supported or invalid data'}
+
+# --- AI ASSIST endpoint for chatbot ---
+@app.route('/api/ai-assist', methods=['POST'])
+def ai_assist():
+    try:
+        data = request.get_json() or {}
+        question = (data.get('question') or '').strip()
+        if not question:
+            return jsonify({'error': 'Aucune question fournie'}), 400
+
+        # Fetch events from DB
+        events = Event.query.order_by(Event.date, Event.start_time).all()
+        events_payload = []
+        for e in events:
+            events_payload.append({
+                'id': e.id,
+                'title': e.title,
+                'description': e.description or '',
+                'date': e.date.isoformat(),
+                'startTime': e.start_time,
+                'endTime': e.end_time,
+                'category': e.category,
+                'priority': e.priority
+            })
+
+        # Prepare prompt for Gemini
+        system_prompt = (
+            "Tu es un assistant francophone intégré à Planify. "
+            "Ton rôle : répondre aux questions sur le calendrier de l'utilisateur en utilisant uniquement les événements fournis. "
+            "Réponds UNIQUEMENT en JSON au format : "
+            "{\"summary\":\"texte court\", \"items\": [{\"type\":\"task\",\"day\":\"lundi|YYYY-MM-DD\",\"start\":\"HH:MM\",\"end\":\"HH:MM\",\"text\":\"...\"}, ...]}.\n"
+            "Si tu ne peux pas répondre à partir des données, indique-le clairement dans le summary.\n"
+        )
+
+        prompt = (
+            f"Question: {question}\n\n"
+            f"Contexte - événements ({len(events_payload)}):\n"
+            f"{json.dumps(events_payload, ensure_ascii=False)}\n\n"
+            "Réponds au format JSON demandé."
+        )
+
+        api_key = os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'GEMINI_API_KEY non configurée sur le serveur.'}), 400
+
+        model = "gemini-2.5-flash"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "systemInstruction": {"parts": [{"text": system_prompt}]},
+            "generationConfig": {
+                "responseMimeType": "application/json"
+            }
+        }
+
+        # Simple retry logic
+        max_retries = 3
+        backoff = 1
+        resp = None
+        for attempt in range(max_retries):
+            try:
+                resp = requests.post(url, headers=headers, json=payload, timeout=25)
+                if resp.status_code == 200:
+                    break
+                elif resp.status_code == 429 and attempt < max_retries - 1:
+                    time.sleep(backoff)
+                    backoff *= 2
+                else:
+                    return jsonify({'error': f'Gemini API error {resp.status_code}: {resp.text}'}), 502
+            except requests.RequestException as ex:
+                if attempt < max_retries - 1:
+                    time.sleep(backoff)
+                    backoff *= 2
+                else:
+                    return jsonify({'error': f'Erreur de connexion à l\'API Gemini: {str(ex)}'}), 503
+
+        if resp is None or resp.status_code != 200:
+            return jsonify({'error': 'Échec de la communication avec l\'API Gemini.'}), 504
+
+        res_json = resp.json()
+        try:
+            ai_text = res_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+            parsed = json.loads(ai_text)
+        except Exception:
+            parsed = {"summary": "Je n'ai pas pu traiter la réponse de l'assistant IA. Le format JSON était incorrect.", "items": []}
+
+        return jsonify({'reply': parsed})
+
+    except Exception as e:
+        return jsonify({'error': f'Erreur interne du serveur: {str(e)}'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

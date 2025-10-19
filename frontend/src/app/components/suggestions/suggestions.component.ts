@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CalendarService } from '../../services/calendar.service';
+import { ChatbotComponent } from '../chatbot/chatbot.component';
 
 interface Suggestion {
   type: string;
@@ -29,7 +30,7 @@ interface SuggestionsResponse {
 @Component({
   selector: 'app-suggestions',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ChatbotComponent],
   template: `
     <div class="suggestions-container">
       <header class="suggestions-header">
@@ -185,6 +186,9 @@ interface SuggestionsResponse {
         </div>
       </div>
     </div>
+
+    <!-- Chatbot Component -->
+    <app-chatbot></app-chatbot>
   `,
   styles: [`
     .suggestions-container {
