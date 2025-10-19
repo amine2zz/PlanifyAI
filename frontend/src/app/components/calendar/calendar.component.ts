@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
+import { CalendarService } from '../../services/calendar.service';
 
 @Component({
   selector: 'app-calendar',
@@ -20,6 +20,7 @@ import { HttpClient } from '@angular/common/http';
                   [class.active]="currentView === view"
                   (click)="setView(view)">{{view}}</button>
           <button class="today-btn" (click)="goToday()">Today</button>
+          <button class="add-btn" (click)="addNewEvent()">+ Add Event</button>
         </div>
       </div>
 
@@ -84,8 +85,14 @@ import { HttpClient } from '@angular/common/http';
                 <div *ngFor="let event of getHourEvents(day.fullDate, hour)" 
                      class="week-event"
                      [class]="'category-' + event.category"
+                     [style.height]="getEventHeight(event) + 'px'"
+                     [style.top]="getEventTop(event, hour) + 'px'"
+                     [style.position]="'absolute'"
+                     [style.width]="'calc(100% - 4px)'"
+                     [style.z-index]="'10'"
                      (click)="editEvent(event)">
-                  {{event.title}}
+                  <div class="event-title">{{event.title}}</div>
+                  <div class="event-time">{{event.startTime}}-{{event.endTime}}</div>
                 </div>
               </div>
             </div>
@@ -103,6 +110,11 @@ import { HttpClient } from '@angular/common/http';
                 <div *ngFor="let event of getHourEvents(selectedDate.toISOString().split('T')[0], hour)" 
                      class="day-event"
                      [class]="'category-' + event.category"
+                     [style.height]="getEventHeight(event) + 'px'"
+                     [style.top]="getEventTop(event, hour) + 'px'"
+                     [style.position]="'absolute'"
+                     [style.width]="'calc(100% - 4px)'"
+                     [style.z-index]="'10'"
                      (click)="editEvent(event)">
                   <div class="event-title">{{event.title}}</div>
                   <div class="event-time">{{event.startTime}} - {{event.endTime}}</div>
@@ -173,7 +185,7 @@ import { HttpClient } from '@angular/common/http';
               <div class="preview-row">
                 <div class="preview-field">
                   <label>Category:</label>
-                  <select [(ngModel)]="voiceResult.event.category" class="edit-select">
+                  <select [(ngModel)]="voiceResult.event.category" class="edit-select" (change)="onCategoryChange()">
                     <option value="general">General</option>
                     <option value="meeting">Meeting</option>
                     <option value="work">Work</option>
@@ -184,7 +196,7 @@ import { HttpClient } from '@angular/common/http';
                 </div>
                 <div class="preview-field">
                   <label>Priority:</label>
-                  <select [(ngModel)]="voiceResult.event.priority" class="edit-select">
+                  <select [(ngModel)]="voiceResult.event.priority" class="edit-select" (change)="onPriorityChange()">
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
@@ -206,7 +218,7 @@ import { HttpClient } from '@angular/common/http';
       <div *ngIf="editingEvent" class="modal-overlay" (click)="closeEditModal()">
         <div class="modal-content" (click)="$event.stopPropagation()">
           <div class="modal-header">
-            <h3>Edit Event</h3>
+            <h3>{{editingEvent.id ? 'Edit Event' : 'Add New Event'}}</h3>
             <button class="close-btn" (click)="closeEditModal()">×</button>
           </div>
           <div class="modal-body">
@@ -255,9 +267,10 @@ import { HttpClient } from '@angular/common/http';
             </div>
           </div>
           <div class="modal-footer">
-            <button class="delete-btn" (click)="deleteEvent()">Delete</button>
+            <button *ngIf="editingEvent.id" class="delete-btn" (click)="deleteEvent()">Delete This Event</button>
+            <button *ngIf="editingEvent.id" class="delete-all-btn" (click)="deleteAllSameName()">Delete All "{{editingEvent.title}}"</button>
             <button class="cancel-btn" (click)="closeEditModal()">Cancel</button>
-            <button class="save-btn" (click)="saveEvent()">Save</button>
+            <button class="save-btn" (click)="saveEvent()">{{editingEvent.id ? 'Save' : 'Create'}}</button>
           </div>
         </div>
       </div>
@@ -272,7 +285,8 @@ import { HttpClient } from '@angular/common/http';
     .view-controls button.active { background: rgba(255,255,255,0.4); }
     .nav-btn { background: rgba(255,255,255,0.2); border: none; color: white; font-size: 1.5rem; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; }
     .title { margin: 0; font-size: 1.8rem; font-weight: 600; }
-    .today-btn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; }
+    .today-btn, .add-btn { background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.3); color: white; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; }
+    .add-btn { background: rgba(255,255,255,0.3); }
     
     .dashboard { background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
@@ -293,7 +307,7 @@ import { HttpClient } from '@angular/common/http';
     .day-cell.other-month { opacity: 0.4; }
     .day-number { font-weight: 600; font-size: 1.1rem; }
     .events-container { margin-top: 0.5rem; }
-    .event-item { padding: 0.25rem 0.5rem; margin-bottom: 0.25rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; display: flex; justify-content: space-between; }
+    .event-item { padding: 0.25rem 0.5rem; margin-bottom: 0.25rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem; display: flex; justify-content: space-between; border: 2px solid rgba(255,255,255,0.3); }
     .event-title { font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .event-time { font-size: 0.7rem; opacity: 0.8; }
     
@@ -304,18 +318,19 @@ import { HttpClient } from '@angular/common/http';
     .week-grid { display: grid; grid-template-columns: 80px repeat(7, 1fr); gap: 1px; }
     .hour-row { display: contents; }
     .hour-label { padding: 0.5rem; font-size: 0.9rem; color: #666; border-right: 1px solid #eee; }
-    .hour-cell { min-height: 60px; border-bottom: 1px solid #eee; padding: 0.25rem; }
-    .week-event, .day-event { padding: 0.25rem 0.5rem; border-radius: 4px; margin-bottom: 0.25rem; cursor: pointer; font-size: 0.8rem; }
+    .hour-cell { min-height: 60px; border-bottom: 1px solid #eee; padding: 0.25rem; position: relative; }
+    .week-event, .day-event { padding: 0.25rem 0.5rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; min-height: 50px; }
+    .event-time { font-size: 0.7rem; opacity: 0.9; margin-top: 2px; }
     .day-schedule { max-height: 600px; overflow-y: auto; }
     .hour-block { display: flex; border-bottom: 1px solid #eee; min-height: 80px; }
-    .hour-content { flex: 1; padding: 0.5rem; }
+    .hour-content { flex: 1; padding: 0.5rem; position: relative; }
     
-    .category-general { background: #6c757d; color: white; }
-    .category-meeting { background: #007bff; color: white; }
-    .category-work { background: #28a745; color: white; }
-    .category-personal { background: #17a2b8; color: white; }
-    .category-health { background: #dc3545; color: white; }
-    .category-education { background: #6f42c1; color: white; }
+    .category-general { background: linear-gradient(135deg, #6c757d, #5a6268); color: white; border-color: #495057; }
+    .category-meeting { background: linear-gradient(135deg, #007bff, #0056b3); color: white; border-color: #004085; }
+    .category-work { background: linear-gradient(135deg, #28a745, #1e7e34); color: white; border-color: #155724; }
+    .category-personal { background: linear-gradient(135deg, #17a2b8, #117a8b); color: white; border-color: #0c5460; }
+    .category-health { background: linear-gradient(135deg, #dc3545, #bd2130); color: white; border-color: #721c24; }
+    .category-education { background: linear-gradient(135deg, #6f42c1, #59359a); color: white; border-color: #3d2465; }
     
     .priority-high { border-left: 4px solid #dc3545; }
     .priority-medium { border-left: 4px solid #ffc107; }
@@ -330,7 +345,7 @@ import { HttpClient } from '@angular/common/http';
     .voice-btn.listening { background: #ff4757; animation: pulse 1.5s infinite; }
     .voice-btn.processing { background: #ffa502; }
     @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
-    .voice-feedback { background: rgba(255,255,255,0.1); border-radius: 12px; padding: 1.5rem; }
+    .voice-feedback { background: rgba(255,255,255,0.1); border-radius: 12px; padding: 1.5rem; max-height: 70vh; overflow-y: auto; }
     .transcript { margin-bottom: 1.5rem; }
     .transcript label { display: block; margin-bottom: 0.5rem; font-weight: 600; }
     .transcript-edit { width: 100%; min-height: 60px; padding: 0.75rem; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; background: rgba(255,255,255,0.2); color: white; resize: vertical; font-family: inherit; }
@@ -346,6 +361,7 @@ import { HttpClient } from '@angular/common/http';
     .preview-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; }
     .preview-field label { display: block; margin-bottom: 0.5rem; font-weight: 600; font-size: 0.9rem; }
     .edit-input, .edit-select { width: 100%; padding: 0.75rem; border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; background: rgba(255,255,255,0.2); color: white; }
+    .edit-select option { background: #333; color: white; }
     .action-buttons { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1.5rem; }
     .action-buttons button { padding: 0.75rem 1.5rem; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
     .confirm-btn { background: #2ed573; color: white; }
@@ -363,6 +379,7 @@ import { HttpClient } from '@angular/common/http';
     .form-input { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; }
     .modal-footer { display: flex; gap: 1rem; justify-content: flex-end; padding: 1.5rem; border-top: 1px solid #eee; }
     .delete-btn { background: #dc3545; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 6px; cursor: pointer; }
+    .delete-all-btn { background: #bd2130; color: white; padding: 0.75rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
     .save-btn { background: #28a745; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 6px; cursor: pointer; }
   `]
 })
@@ -385,7 +402,7 @@ export class CalendarComponent implements OnInit {
   voiceResult: any = null;
   recognition: any;
 
-  constructor(private http: HttpClient) {}
+  constructor(private calendarService: CalendarService) {}
 
   ngOnInit() {
     this.updateCalendar();
@@ -493,8 +510,8 @@ export class CalendarComponent implements OnInit {
   getHourEvents(date: string, hour: number) {
     return this.events.filter(e => {
       if (e.date === date && e.startTime) {
-        const eventHour = parseInt(e.startTime.split(':')[0]);
-        return eventHour === hour;
+        const startHour = parseInt(e.startTime.split(':')[0]);
+        return startHour === hour; // Only show event in its start hour
       }
       return false;
     });
@@ -505,8 +522,29 @@ export class CalendarComponent implements OnInit {
     return maxCount > 0 ? (count / maxCount) * 100 : 0;
   }
 
+  getEventHeight(event: any): number {
+    const startHour = parseInt(event.startTime.split(':')[0]);
+    const startMinute = parseInt(event.startTime.split(':')[1]);
+    const endHour = parseInt(event.endTime.split(':')[0]);
+    const endMinute = parseInt(event.endTime.split(':')[1]);
+    
+    const durationInMinutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute);
+    const hourCellHeight = this.currentView === 'Day' ? 80 : 60; // Match CSS min-height
+    
+    return (durationInMinutes / 60) * hourCellHeight;
+  }
+
+  getEventTop(event: any, currentHour: number): number {
+    const startHour = parseInt(event.startTime.split(':')[0]);
+    const startMinute = parseInt(event.startTime.split(':')[1]);
+    
+    // Calculate offset from the current hour
+    const minuteOffset = startMinute;
+    return minuteOffset; // 1px per minute within the hour
+  }
+
   loadEvents() {
-    this.http.get<any[]>('http://localhost:5000/api/events').subscribe({
+    this.calendarService.getEvents().subscribe({
       next: (events) => {
         this.events = events;
         this.updateCalendar();
@@ -516,10 +554,8 @@ export class CalendarComponent implements OnInit {
   }
 
   loadAnalytics() {
-    this.http.get<any>('http://localhost:5000/api/analytics').subscribe({
-      next: (data) => {
-        this.analytics = data;
-      },
+    this.calendarService.getAnalytics().subscribe({
+      next: (data) => this.analytics = data,
       error: () => console.log('Analytics not available')
     });
   }
@@ -528,32 +564,72 @@ export class CalendarComponent implements OnInit {
     this.editingEvent = { ...event };
   }
 
+  addNewEvent() {
+    this.editingEvent = {
+      title: '',
+      description: '',
+      date: new Date().toISOString().split('T')[0],
+      startTime: '09:00',
+      endTime: '10:00',
+      category: 'general',
+      priority: 'medium'
+    };
+  }
+
   closeEditModal() {
     this.editingEvent = null;
   }
 
   saveEvent() {
     if (this.editingEvent) {
-      this.http.put(`http://localhost:5000/api/events/${this.editingEvent.id}`, this.editingEvent).subscribe({
+      const operation = this.editingEvent.id 
+        ? this.calendarService.updateEvent(this.editingEvent.id, this.editingEvent)
+        : this.calendarService.createEvent(this.editingEvent);
+      
+      operation.subscribe({
         next: () => {
           this.loadEvents();
           this.loadAnalytics();
           this.closeEditModal();
         },
-        error: () => console.log('Error updating event')
+        error: () => console.log('Error saving event')
       });
     }
   }
 
   deleteEvent() {
-    if (this.editingEvent && confirm('Delete this event?')) {
-      this.http.delete(`http://localhost:5000/api/events/${this.editingEvent.id}`).subscribe({
+    if (this.editingEvent && this.editingEvent.id && confirm(`Delete "${this.editingEvent.title}" on ${this.editingEvent.date}?`)) {
+      console.log('Deleting single event:', this.editingEvent.id, this.editingEvent.title);
+      this.calendarService.deleteEvent(this.editingEvent.id).subscribe({
         next: () => {
+          console.log('Event deleted successfully');
           this.loadEvents();
           this.loadAnalytics();
           this.closeEditModal();
         },
-        error: () => console.log('Error deleting event')
+        error: (error) => {
+          console.error('Error deleting event:', error);
+        }
+      });
+    }
+  }
+
+  deleteAllSameName() {
+    if (this.editingEvent && confirm(`Delete ALL events named "${this.editingEvent.title}"?`)) {
+      const sameNameEvents = this.events.filter(e => e.title === this.editingEvent.title);
+      console.log('Deleting all events with name:', this.editingEvent.title, 'Count:', sameNameEvents.length);
+      
+      const deletePromises = sameNameEvents.map(event => 
+        this.calendarService.deleteEvent(event.id).toPromise()
+      );
+      
+      Promise.all(deletePromises).then(() => {
+        console.log('All events deleted successfully');
+        this.loadEvents();
+        this.loadAnalytics();
+        this.closeEditModal();
+      }).catch(error => {
+        console.error('Error deleting events:', error);
       });
     }
   }
@@ -600,14 +676,12 @@ export class CalendarComponent implements OnInit {
   }
 
   processVoiceCommand(transcript: string) {
-    this.http.post('http://localhost:5000/api/ai/process-voice', { transcript }).subscribe({
+    this.calendarService.processVoiceCommand(transcript).subscribe({
       next: (result: any) => {
         this.voiceResult = result;
         this.isProcessing = false;
       },
-      error: () => {
-        this.isProcessing = false;
-      }
+      error: () => this.isProcessing = false
     });
   }
 
@@ -639,7 +713,7 @@ export class CalendarComponent implements OnInit {
         priority: this.voiceResult.event.priority
       };
 
-      this.http.post('http://localhost:5000/api/events', eventData).subscribe({
+      this.calendarService.createEvent(eventData).subscribe({
         next: () => {
           this.loadEvents();
           this.loadAnalytics();
@@ -661,5 +735,13 @@ export class CalendarComponent implements OnInit {
     this.voiceResult = null;
     this.lastCommand = '';
     this.isProcessing = false;
+  }
+
+  onCategoryChange() {
+    // Category changed - no additional action needed
+  }
+
+  onPriorityChange() {
+    // Priority changed - no additional action needed
   }
 }

@@ -36,22 +36,23 @@ class VoiceAI:
 
     def _extract_title(self, transcript):
         # Remove command words first
-        title = re.sub(r'\b(schedule|add|create|book|plan|set|make)\b', '', transcript)
+        title = re.sub(r'\b(schedule|add|create|book|plan|set|make)\b', '', transcript, flags=re.IGNORECASE)
         
         # Remove time information
-        title = re.sub(r'\b\d{1,2}:?\d{0,2}\s*(am|pm|a\.m\.|p\.m\.)\b', '', title)
+        title = re.sub(r'\b\d{1,2}:?\d{0,2}\s*(am|pm|a\.m\.|p\.m\.)\b', '', title, flags=re.IGNORECASE)
         
-        # Remove date information
-        title = re.sub(r'\b\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)\b', '', title)
-        title = re.sub(r'\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\b', '', title)
-        title = re.sub(r'\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b', '', title)
-        title = re.sub(r'\b(next|this)\s+(week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b', '', title)
+        # Remove date information - enhanced patterns
+        title = re.sub(r'\b\d{1,2}(st|nd|rd|th)?\s+(of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)\b', '', title, flags=re.IGNORECASE)
+        title = re.sub(r'\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(st|nd|rd|th)?\b', '', title, flags=re.IGNORECASE)
+        title = re.sub(r'\b(in|on)\s+\d{1,2}(st|nd|rd|th)?\s+(of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)\b', '', title, flags=re.IGNORECASE)
+        title = re.sub(r'\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b', '', title, flags=re.IGNORECASE)
+        title = re.sub(r'\b(next|this)\s+(week|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b', '', title, flags=re.IGNORECASE)
         
         # Remove location prepositions
-        title = re.sub(r'\b(at|in|on)\s+[a-z]+\b', '', title)
+        title = re.sub(r'\b(at|in|on)\s+[a-z]+\b', '', title, flags=re.IGNORECASE)
         
         # Remove participant information
-        title = re.sub(r'\bwith\s+[a-z\s]+', '', title)
+        title = re.sub(r'\bwith\s+[a-z\s]+', '', title, flags=re.IGNORECASE)
         
         # Clean up extra spaces and capitalize
         title = ' '.join(title.split())
@@ -60,10 +61,11 @@ class VoiceAI:
     def _extract_date(self, transcript):
         today = datetime.now().date()
         
-        # Specific date formats
+        # Enhanced date patterns
         date_patterns = [
-            r'(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)',
-            r'(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})',
+            r'(\d{1,2})(st|nd|rd|th)?\s+(of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)',
+            r'(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(st|nd|rd|th)?',
+            r'(in|on)\s+(\d{1,2})(st|nd|rd|th)?\s+(of\s+)?(january|february|march|april|may|june|july|august|september|october|november|december)',
             r'(\d{1,2})/(\d{1,2})/(\d{2,4})',
             r'(\d{1,2})-(\d{1,2})-(\d{2,4})'
         ]
@@ -71,24 +73,31 @@ class VoiceAI:
         for pattern in date_patterns:
             match = re.search(pattern, transcript, re.IGNORECASE)
             if match:
-                if 'january' in pattern or 'february' in pattern:
-                    if len(match.groups()) == 2:
-                        if match.group(1).isdigit():
-                            day, month_name = match.groups()
-                        else:
-                            month_name, day = match.groups()
-                        
-                        months = ['january', 'february', 'march', 'april', 'may', 'june', 
-                                'july', 'august', 'september', 'october', 'november', 'december']
-                        month = months.index(month_name.lower()) + 1
-                        day = int(day)
-                        year = today.year
-                        
+                groups = match.groups()
+                months = ['january', 'february', 'march', 'april', 'may', 'june', 
+                        'july', 'august', 'september', 'october', 'november', 'december']
+                
+                # Find day and month from groups
+                day = None
+                month_name = None
+                
+                for group in groups:
+                    if group and group.isdigit():
+                        day = int(group)
+                    elif group and group.lower() in months:
+                        month_name = group.lower()
+                
+                if day and month_name:
+                    month = months.index(month_name) + 1
+                    year = today.year
+                    
+                    try:
                         target_date = datetime(year, month, day).date()
                         if target_date < today:
                             target_date = datetime(year + 1, month, day).date()
-                        
                         return target_date.isoformat()
+                    except ValueError:
+                        pass
         
         # Relative dates
         if any(word in transcript for word in ['today', 'this day']):
