@@ -15,6 +15,7 @@ import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
           <a routerLink="/calendar" routerLinkActive="active">📅 Calendar</a>
           <a routerLink="/suggestions" routerLinkActive="active">🤖 AI Suggestions</a>
           <a routerLink="/resume" routerLinkActive="active">📊 Resume</a>
+          <a routerLink="/dashboard" routerLinkActive="active">📈 Dashboard</a>
         </nav>
       </header>
       <main>

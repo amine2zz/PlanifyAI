@@ -91,6 +91,8 @@ export class ChatbotComponent implements OnInit {
   loading = false;
   error = '';
   isOpen = false;
+  isListening = false;
+  recognition: any;
   predefinedQuestions = [
     'Quelles tâches aujourd\'hui?',
     'Qu\'est-ce que j\'ai demain?',

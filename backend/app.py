@@ -9,9 +9,10 @@ import os
 import requests
 import time
 import logging
-from google import genai
-from google.genai import types
-from google.genai.errors import APIError
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -324,122 +325,464 @@ def apply_suggestion_to_database(suggestion):
     return {'error': 'Suggestion type not supported or invalid data'}
 
 # -----------------------------
-# Helper function for Gemini API
-# -----------------------------
-def generate_gemini_response(prompt, response_schema):
-    gemini_key = os.environ.get('GEMINI_API_KEY')
-    if not gemini_key:
-        raise ValueError("Clé API Gemini manquante")
-
-    client = genai.Client(api_key=gemini_key)
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=response_schema
-        )
-    )
-    return json.loads(response.text or '{}')
-
-# -----------------------------
-# API: Daily Summary
+# API: Daily Summary (Simple Version)
 # -----------------------------
 @app.route('/api/daily-summary', methods=['POST'])
 def daily_summary():
     try:
-        data = request.json or {}
-        slots = data.get('slots', [])
-        tasks = data.get('tasks', [])
-
-        if not slots and not tasks:
-            return jsonify({'error': 'Aucun créneau ni tâche fourni'}), 400
-
-        response_schema = types.Schema(
-            type=types.Type.OBJECT,
-            properties={
-                "summary": types.Schema(type=types.Type.STRING, description="Résumé concis et clair de la journée."),
-                "items": types.Schema(
-                    type=types.Type.ARRAY,
-                    description="Liste des créneaux et tâches.",
-                    items=types.Schema(
-                        type=types.Type.OBJECT,
-                        properties={
-                            "type": types.Schema(type=types.Type.STRING, description="Type: 'slot' ou 'task'"),
-                            "day": types.Schema(type=types.Type.STRING, description="Jour de la semaine"),
-                            "start": types.Schema(type=types.Type.STRING, description="Heure de début (HH:MM)"),
-                            "end": types.Schema(type=types.Type.STRING, description="Heure de fin (HH:MM)"),
-                            "text": types.Schema(type=types.Type.STRING, description="Description de l'événement ou tâche")
-                        },
-                        required=["type", "day", "text"]
-                    )
-                )
-            },
-            required=["summary", "items"]
-        )
-
-        prompt = (
-            "You are an English-speaking assistant for Planify.\n"
-            "Provide a clear and concise summary of the user's day.\n"
-            "Analyze the time blocks and tasks, taking into account their duration and priority.\n"
-            "Give a brief perspective on time management and daily strategy.\n"
-            "Strict JSON format according to the schema.\n"
-            f"Tasks: {json.dumps(tasks, ensure_ascii=False)}\n"
-            f"Time blocks: {json.dumps(slots, ensure_ascii=False)}"
-        )
-
-        parsed = generate_gemini_response(prompt, response_schema)
-        return jsonify(parsed)
-
-    except APIError as e:
-        logging.error(f"Daily Summary APIError: {str(e)}")
-        return jsonify({'error': f'Erreur API Gemini: {str(e)}'}), 500
+        # Get events from database
+        events = Event.query.filter(Event.date >= datetime.now().date()).order_by(Event.date, Event.start_time).limit(10).all()
+        
+        total_events = len(events)
+        categories = {}
+        
+        items = []
+        for event in events:
+            categories[event.category] = categories.get(event.category, 0) + 1
+            items.append({
+                "type": "event",
+                "day": event.date.strftime("%A"),
+                "start": event.start_time,
+                "end": event.end_time,
+                "text": f"{event.title} ({event.category})"
+            })
+        
+        # Generate simple summary
+        if total_events == 0:
+            summary = "Aucun événement prévu pour les prochains jours."
+        else:
+            top_category = max(categories.keys(), key=categories.get) if categories else "général"
+            summary = f"Vous avez {total_events} événements prévus, principalement dans la catégorie {top_category}."
+        
+        return jsonify({
+            "summary": summary,
+            "items": items
+        })
+        
     except Exception as e:
-        logging.error(f"Daily Summary Exception: {str(e)}")
-        return jsonify({'error': f'Erreur Daily Summary inattendue: {str(e)}'}), 500
+        logging.error(f"Daily Summary Error: {str(e)}")
+        return jsonify({'error': 'Erreur lors de la génération du résumé'}), 500
 
 # -----------------------------
-# API: Smart Reminders / Motivational Quotes
+# API: Smart Reminders (Simple Version)
 # -----------------------------
 @app.route('/api/smart-reminders', methods=['POST'])
 def smart_reminders():
     try:
-        data = request.json or {}
-        slots = data.get('slots', [])
-        tasks = data.get('tasks', [])
-
-        if not slots and not tasks:
-            return jsonify({'error': 'Aucun créneau ni tâche fourni pour générer une citation'}), 400
-
-        response_schema = types.Schema(
-            type=types.Type.OBJECT,
-            properties={
-                "quote": types.Schema(type=types.Type.STRING, description="Citation motivante en français"),
-                "context_note": types.Schema(type=types.Type.STRING, description="Pourquoi cette citation est pertinente"),
-                "day_status": types.Schema(type=types.Type.STRING, description="Évaluation rapide de la journée: 'busy', 'balanced', 'light'")
-            },
-            required=["quote", "context_note"]
-        )
-
-        prompt = (
-            "You are an English-speaking assistant for Planify, specialized in motivation.\n"
-            "Analyze the user's tasks and time blocks to understand the tone of the day.\n"
-            "Generate a relevant motivational quote and a short explanation of why it applies.\n"
-            "Also indicate whether the day seems 'busy', 'balanced', or 'light'.\n"
-            "Strict JSON format according to the schema.\n"
-            f"Tasks: {json.dumps(tasks, ensure_ascii=False)}\n"
-            f"Time blocks: {json.dumps(slots, ensure_ascii=False)}"
-        )
-
-        parsed = generate_gemini_response(prompt, response_schema)
-        return jsonify(parsed)
-
-    except APIError as e:
-        logging.error(f"Smart Reminders APIError: {str(e)}")
-        return jsonify({'error': f'Erreur API Gemini: {str(e)}'}), 500
+        # Get upcoming events count
+        today_events = Event.query.filter(Event.date == datetime.now().date()).count()
+        week_events = Event.query.filter(Event.date >= datetime.now().date(), 
+                                       Event.date <= datetime.now().date() + timedelta(days=7)).count()
+        
+        quotes = [
+            "La productivité n'est jamais un accident. C'est toujours le résultat d'un engagement envers l'excellence.",
+            "Le temps est votre ressource la plus précieuse. Utilisez-le sagement.",
+            "Chaque minute compte. Planifiez votre succès.",
+            "L'organisation est la clé de l'efficacité.",
+            "Un calendrier bien géré est un esprit tranquille."
+        ]
+        
+        # Determine day status
+        if today_events > 5:
+            day_status = "busy"
+            context = "Journée chargée en perspective"
+        elif today_events > 2:
+            day_status = "balanced"
+            context = "Journée équilibrée"
+        else:
+            day_status = "light"
+            context = "Journée plus calme"
+        
+        import random
+        selected_quote = random.choice(quotes)
+        
+        return jsonify({
+            "quote": selected_quote,
+            "context_note": context,
+            "day_status": day_status
+        })
+        
     except Exception as e:
-        logging.error(f"Smart Reminders Exception: {str(e)}")
-        return jsonify({'error': f'Erreur Smart Reminders inattendue: {str(e)}'}), 500
+        logging.error(f"Smart Reminders Error: {str(e)}")
+        return jsonify({'error': 'Erreur lors de la génération de la citation'}), 500
+
+# -----------------------------
+# AI Mood Predictor
+# -----------------------------
+def predict_week_mood(events):
+    stress_words = ['deadline', 'urgent', 'meeting', 'presentation', 'exam', 'test', 'interview', 'crisis', 'emergency']
+    happy_words = ['party', 'vacation', 'celebration', 'lunch', 'dinner', 'birthday', 'wedding', 'fun', 'relax']
+    
+    stress_score = sum(1 for e in events for word in stress_words if word in e.title.lower())
+    happy_score = sum(1 for e in events for word in happy_words if word in e.title.lower())
+    
+    total_events = len(events)
+    
+    if happy_score > stress_score and happy_score > 0:
+        return {
+            'mood': 'Semaine joyeuse',
+            'icon': '😊',
+            'color': '#28a745',
+            'description': f'{happy_score} événements positifs détectés'
+        }
+    elif stress_score > happy_score * 1.5 and stress_score > 0:
+        return {
+            'mood': 'Semaine stressante',
+            'icon': '😰',
+            'color': '#dc3545',
+            'description': f'{stress_score} événements stressants détectés'
+        }
+    elif total_events > 8:
+        return {
+            'mood': 'Semaine chargée',
+            'icon': '😅',
+            'color': '#ffc107',
+            'description': f'{total_events} événements cette semaine'
+        }
+    else:
+        return {
+            'mood': 'Semaine équilibrée',
+            'icon': '😌',
+            'color': '#17a2b8',
+            'description': 'Planning bien équilibré'
+        }
+
+# -----------------------------
+# AI Productivity Score
+# -----------------------------
+def calculate_productivity_score(events):
+    if not events:
+        return {'score': 50, 'level': 'Moyen', 'factors': []}
+    
+    score = 50  # Base score
+    factors = []
+    
+    # Bonus pour équilibre des catégories
+    categories = [e.category for e in events]
+    unique_cats = len(set(categories))
+    if unique_cats >= 3:
+        score += 15
+        factors.append('Bonne diversité d\'activités (+15)')
+    
+    # Malus pour surcharge
+    total_events = len(events)
+    if total_events > 10:
+        score -= 20
+        factors.append(f'Surcharge: {total_events} événements (-20)')
+    elif total_events < 3:
+        score -= 10
+        factors.append('Peu d\'activités planifiées (-10)')
+    
+    # Bonus pour événements positifs
+    positive_events = [e for e in events if any(word in e.title.lower() 
+                      for word in ['party', 'celebration', 'vacation', 'fun', 'lunch', 'dinner'])]
+    if positive_events:
+        bonus = len(positive_events) * 5
+        score += bonus
+        factors.append(f'{len(positive_events)} événements positifs (+{bonus})')
+    
+    # Malus pour événements stressants
+    stress_events = [e for e in events if any(word in e.title.lower() 
+                    for word in ['urgent', 'deadline', 'crisis', 'emergency', 'exam'])]
+    if stress_events:
+        malus = len(stress_events) * 8
+        score -= malus
+        factors.append(f'{len(stress_events)} événements stressants (-{malus})')
+    
+    # Bonus pour équilibre travail/personnel
+    work_events = len([e for e in events if e.category in ['work', 'meeting']])
+    personal_events = len([e for e in events if e.category == 'personal'])
+    if work_events > 0 and personal_events > 0:
+        score += 10
+        factors.append('Bon équilibre travail/personnel (+10)')
+    
+    # Limiter le score entre 0 et 100
+    final_score = min(100, max(0, score))
+    
+    # Déterminer le niveau
+    if final_score >= 80:
+        level = 'Excellent'
+    elif final_score >= 60:
+        level = 'Bon'
+    elif final_score >= 40:
+        level = 'Moyen'
+    else:
+        level = 'À améliorer'
+    
+    return {
+        'score': final_score,
+        'level': level,
+        'factors': factors
+    }
+
+# -----------------------------
+# Week Label Helper
+# -----------------------------
+def get_week_label(week_offset):
+    if week_offset == 0:
+        return "Cette semaine"
+    elif week_offset == -1:
+        return "Semaine dernière"
+    elif week_offset == 1:
+        return "Semaine prochaine"
+    elif week_offset < 0:
+        return f"Il y a {abs(week_offset)} semaines"
+    else:
+        return f"Dans {week_offset} semaines"
+
+# -----------------------------
+# Simple Sentiment Analysis (Fallback)
+# -----------------------------
+def simple_sentiment_analysis(events):
+    # Positive keywords - only based on event names
+    positive_words = [
+        'wedding', 'party', 'celebration', 'birthday', 'anniversary', 'vacation', 'holiday',
+        'success', 'win', 'achievement', 'promotion', 'bonus', 'reward', 'gift',
+        'happy', 'joy', 'fun', 'exciting', 'amazing', 'wonderful', 'great', 'excellent',
+        'lunch', 'dinner', 'coffee', 'date', 'friend', 'family', 'love', 'concert',
+        'movie', 'game', 'sport', 'hobby', 'relax', 'rest', 'spa', 'massage'
+    ]
+    
+    # Negative keywords - only based on event names
+    negative_words = [
+        'emergency', 'urgent', 'crisis', 'problem', 'issue', 'trouble', 'difficulty',
+        'test', 'exam', 'interview', 'deadline', 'stress', 'pressure', 'overtime',
+        'sick', 'illness', 'doctor', 'hospital', 'surgery', 'pain', 'injury',
+        'funeral', 'death', 'accident', 'repair', 'fix', 'broken', 'cancel',
+        'court', 'legal', 'tax', 'bill', 'debt', 'complaint', 'conflict'
+    ]
+    
+    sentiment_counts = {'positive': 0, 'negative': 0, 'neutral': 0}
+    
+    for event in events:
+        # Only analyze event title and description
+        text = (event.title + ' ' + (event.description or '')).lower()
+        
+        # Count keyword matches
+        pos_count = sum(1 for word in positive_words if word in text)
+        neg_count = sum(1 for word in negative_words if word in text)
+        
+        # Determine sentiment based only on keywords
+        if pos_count > neg_count:
+            sentiment_counts['positive'] += 1
+        elif neg_count > pos_count:
+            sentiment_counts['negative'] += 1
+        else:
+            sentiment_counts['neutral'] += 1
+    
+    total = len(events) or 1
+    pos_ratio = sentiment_counts['positive'] / total
+    neg_ratio = sentiment_counts['negative'] / total
+    
+    # Determine overall sentiment
+    if pos_ratio > 0.4:
+        overall = 'positive'
+    elif neg_ratio > 0.3:
+        overall = 'negative'
+    else:
+        overall = 'neutral'
+    
+    return {
+        'overall_sentiment': overall,
+        'sentiment_distribution': sentiment_counts,
+        'sentiment_score': round((sentiment_counts['positive'] - sentiment_counts['negative']) / total, 2),
+        'analyzed_events': total
+    }
+
+# -----------------------------
+# Sentiment Analysis with Hugging Face
+# -----------------------------
+def analyze_event_sentiment(events):
+    try:
+        hf_api_key = os.getenv('HUGGINGFACE_API_KEY')
+        if not hf_api_key:
+            # Fallback to simple keyword-based sentiment
+            return simple_sentiment_analysis(events)
+        
+        # Collect event titles and descriptions
+        texts = []
+        for event in events:
+            text = event.title
+            if event.description:
+                text += ' ' + event.description
+            texts.append(text)
+        
+        if not texts:
+            return {'overall_sentiment': 'neutral', 'sentiment_distribution': {'positive': 0, 'negative': 0, 'neutral': 1}}
+        
+        # Hugging Face API call
+        headers = {'Authorization': f'Bearer {hf_api_key}'}
+        api_url = 'https://api-inference.huggingface.co/models/cardiffnlp/twitter-roberta-base-sentiment-latest'
+        
+        # Analyze first 10 events to avoid API limits
+        sample_texts = texts[:10]
+        payload = {'inputs': sample_texts}
+        
+        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
+        
+        if response.status_code == 200:
+            results = response.json()
+            
+            # Process results
+            sentiment_counts = {'positive': 0, 'negative': 0, 'neutral': 0}
+            total_score = 0
+            confidence_sum = 0
+            
+            for i, result in enumerate(results):
+                if isinstance(result, list) and result:
+                    # Get highest confidence sentiment
+                    best_sentiment = max(result, key=lambda x: x['score'])
+                    label = best_sentiment['label'].lower()
+                    confidence = best_sentiment['score']
+                    confidence_sum += confidence
+                    
+                    # Map labels with confidence weighting
+                    if 'positive' in label or label == 'label_2':
+                        sentiment_counts['positive'] += 1
+                        total_score += confidence
+                    elif 'negative' in label or label == 'label_0':
+                        sentiment_counts['negative'] += 1
+                        total_score -= confidence
+                    else:
+                        sentiment_counts['neutral'] += 1
+            
+            # Calculate overall sentiment with better logic
+            total_events = len(sample_texts)
+            if total_events > 0:
+                positive_ratio = sentiment_counts['positive'] / total_events
+                negative_ratio = sentiment_counts['negative'] / total_events
+                avg_confidence = confidence_sum / total_events
+                
+                # More sensitive sentiment detection
+                if positive_ratio > 0.4 and avg_confidence > 0.6:
+                    overall = 'positive'
+                elif negative_ratio > 0.3 and avg_confidence > 0.6:
+                    overall = 'negative'
+                elif positive_ratio > negative_ratio:
+                    overall = 'positive'
+                elif negative_ratio > positive_ratio:
+                    overall = 'negative'
+                else:
+                    overall = 'neutral'
+            else:
+                overall = 'neutral'
+            
+            return {
+                'overall_sentiment': overall,
+                'sentiment_distribution': sentiment_counts,
+                'sentiment_score': round(total_score / max(total_events, 1), 2),
+                'analyzed_events': total_events
+            }
+        else:
+            return {'error': f'API Error: {response.status_code}', 'overall_sentiment': 'neutral'}
+            
+    except Exception as e:
+        logging.error(f"Sentiment analysis error: {str(e)}")
+        return {'error': str(e), 'overall_sentiment': 'neutral'}
+
+# -----------------------------
+# API: Dashboard Analytics
+# -----------------------------
+@app.route('/api/dashboard', methods=['GET'])
+def dashboard_analytics():
+    try:
+        # Get filter parameters
+        week_offset = int(request.args.get('week_offset', 0))  # 0=current, -1=previous, 1=next
+        category = request.args.get('category')
+        
+        # Calculate week dates based on offset
+        today = datetime.now().date()
+        start_of_current_week = today - timedelta(days=today.weekday())
+        start_date = (start_of_current_week + timedelta(weeks=week_offset)).isoformat()
+        end_date = (start_of_current_week + timedelta(weeks=week_offset, days=6)).isoformat()
+        
+        # Build query
+        query = Event.query.filter(
+            Event.date >= datetime.fromisoformat(start_date).date(),
+            Event.date <= datetime.fromisoformat(end_date).date()
+        )
+        
+        if category and category != 'all':
+            query = query.filter(Event.category == category)
+        
+        events = query.all()
+        
+        # Calculate time spent per category
+        category_time = {}
+        daily_time = {}
+        weekly_time = {}
+        priority_distribution = {'low': 0, 'medium': 0, 'high': 0}
+        
+        total_hours = 0
+        
+        for event in events:
+            # Calculate duration
+            start_time = datetime.strptime(event.start_time, '%H:%M').time()
+            end_time = datetime.strptime(event.end_time, '%H:%M').time()
+            duration = datetime.combine(datetime.min, end_time) - datetime.combine(datetime.min, start_time)
+            hours = duration.total_seconds() / 3600
+            
+            total_hours += hours
+            
+            # Category breakdown
+            category_time[event.category] = category_time.get(event.category, 0) + hours
+            
+            # Daily breakdown
+            date_str = event.date.isoformat()
+            daily_time[date_str] = daily_time.get(date_str, 0) + hours
+            
+            # Weekly breakdown
+            week_start = event.date - timedelta(days=event.date.weekday())
+            week_str = week_start.isoformat()
+            weekly_time[week_str] = weekly_time.get(week_str, 0) + hours
+            
+            # Priority distribution
+            priority_distribution[event.priority] += 1
+        
+        # Prepare chart data
+        category_chart = [{'name': k, 'value': round(v, 2)} for k, v in category_time.items()]
+        daily_chart = [{'date': k, 'hours': round(v, 2)} for k, v in sorted(daily_time.items())]
+        weekly_chart = [{'week': k, 'hours': round(v, 2)} for k, v in sorted(weekly_time.items())]
+        priority_chart = [{'name': k, 'value': v} for k, v in priority_distribution.items()]
+        
+        # Calculate insights
+        avg_daily_hours = total_hours / max(len(set(e.date for e in events)), 1)
+        most_busy_category = max(category_time.keys(), key=category_time.get) if category_time else 'N/A'
+        total_events = len(events)
+        
+        # Sentiment Analysis - only for filtered events
+        sentiment_data = analyze_event_sentiment(events)
+        
+        # AI Mood Predictor
+        mood_data = predict_week_mood(events)
+        
+        # AI Productivity Score
+        productivity_score = calculate_productivity_score(events)
+        
+        return jsonify({
+            'summary': {
+                'total_hours': round(total_hours, 2),
+                'total_events': total_events,
+                'avg_daily_hours': round(avg_daily_hours, 2),
+                'most_busy_category': most_busy_category,
+                'date_range': {'start': start_date, 'end': end_date},
+                'week_offset': week_offset,
+                'week_label': get_week_label(week_offset)
+            },
+            'charts': {
+                'category_time': category_chart,
+                'daily_time': daily_chart,
+                'weekly_time': weekly_chart,
+                'priority_distribution': priority_chart
+            },
+            'sentiment': sentiment_data,
+            'mood_prediction': mood_data,
+            'productivity_score': productivity_score
+        })
+        
+    except Exception as e:
+        logging.error(f"Dashboard Error: {str(e)}")
+        return jsonify({'error': 'Erreur lors de la génération du dashboard'}), 500
 
 # --- AI ASSIST endpoint for chatbot ---
 @app.route('/api/ai-assist', methods=['POST'])

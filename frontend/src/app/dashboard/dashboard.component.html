@@ -1,0 +1,167 @@
+<div class="dashboard-container">
+  <div class="dashboard-header">
+    <h1>📊 Dashboard Analytics</h1>
+    <p>Analyse complète de votre temps et productivité</p>
+  </div>
+
+  <!-- Week Navigation -->
+  <div class="week-navigation">
+    <div class="week-controls">
+      <button class="week-btn prev" (click)="previousWeek()">
+        <span class="btn-icon">←</span>
+        <span class="btn-text">Semaine précédente</span>
+      </button>
+      
+      <div class="current-week">
+        <div class="week-title">{{getWeekLabel()}}</div>
+        <div class="week-dates">{{getDateRange()}}</div>
+        <button class="today-btn" (click)="currentWeek()" *ngIf="currentWeekOffset !== 0">
+          Aujourd'hui
+        </button>
+      </div>
+      
+      <button class="week-btn next" (click)="nextWeek()">
+        <span class="btn-text">Semaine suivante</span>
+        <span class="btn-icon">→</span>
+      </button>
+    </div>
+    
+    <div class="category-filter">
+      <label>Catégorie:</label>
+      <select [(ngModel)]="selectedCategory" (change)="onFilterChange()">
+        <option *ngFor="let cat of categories" [value]="cat">
+          {{cat === 'all' ? 'Toutes' : cat}}
+        </option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading" class="loading">
+    <div class="spinner"></div>
+    <p>Chargement des données...</p>
+  </div>
+
+  <!-- Error -->
+  <div *ngIf="error" class="error">
+    <p>{{error}}</p>
+    <button (click)="loadDashboard()">Réessayer</button>
+  </div>
+
+  <!-- Dashboard Content -->
+  <div *ngIf="dashboardData && !loading" class="dashboard-content">
+    
+    <!-- Summary Cards -->
+    <div class="summary-cards">
+      <div class="card">
+        <div class="card-icon">⏱️</div>
+        <div class="card-content">
+          <h3>{{dashboardData.summary.total_hours}}h</h3>
+          <p>Temps total</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📅</div>
+        <div class="card-content">
+          <h3>{{dashboardData.summary.total_events}}</h3>
+          <p>Événements</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-icon">📈</div>
+        <div class="card-content">
+          <h3>{{dashboardData.summary.avg_daily_hours}}h</h3>
+          <p>Moyenne/jour</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🎯</div>
+        <div class="card-content">
+          <h3>{{dashboardData.summary.most_busy_category}}</h3>
+          <p>Catégorie principale</p>
+        </div>
+      </div>
+      <div class="card" *ngIf="dashboardData.sentiment">
+        <div class="card-icon">{{getSentimentIcon()}}</div>
+        <div class="card-content">
+          <h3>{{getSentimentLabel()}}</h3>
+          <p>Sentiment général</p>
+        </div>
+      </div>
+      <div class="card" *ngIf="dashboardData.mood_prediction">
+        <div class="card-icon">{{dashboardData.mood_prediction.icon}}</div>
+        <div class="card-content">
+          <h3>{{dashboardData.mood_prediction.mood}}</h3>
+          <p>{{dashboardData.mood_prediction.description}}</p>
+        </div>
+      </div>
+      <div class="card" *ngIf="dashboardData.productivity_score">
+        <div class="card-icon">{{getProductivityIcon()}}</div>
+        <div class="card-content">
+          <h3>{{dashboardData.productivity_score.score}}%</h3>
+          <p>Productivité {{dashboardData.productivity_score.level}}</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Grid -->
+    <div class="charts-grid">
+      <div class="chart-container">
+        <canvas id="categoryChart"></canvas>
+      </div>
+      <div class="chart-container">
+        <canvas id="priorityChart"></canvas>
+      </div>
+      <div class="chart-container full-width">
+        <canvas id="dailyChart"></canvas>
+      </div>
+      <div class="chart-container full-width">
+        <canvas id="weeklyChart"></canvas>
+      </div>
+      <div class="chart-container" *ngIf="dashboardData.sentiment && !dashboardData.sentiment.error">
+        <canvas id="sentimentChart"></canvas>
+      </div>
+    </div>
+
+    <!-- AI Insights Section -->
+    <div class="ai-insights-section" *ngIf="dashboardData.productivity_score || dashboardData.mood_prediction">
+      <h2>🤖 AI Insights</h2>
+      
+      <div class="insights-grid">
+        <div class="insight-card" *ngIf="dashboardData.productivity_score">
+          <h3>📈 Analyse de Productivité</h3>
+          <div class="productivity-details">
+            <div class="score-display">
+              <div class="score-circle" [style.background]="getProductivityColor()">
+                {{dashboardData.productivity_score.score}}%
+              </div>
+              <span class="score-level">{{dashboardData.productivity_score.level}}</span>
+            </div>
+            <div class="factors-list">
+              <h4>Facteurs d'analyse :</h4>
+              <ul>
+                <li *ngFor="let factor of dashboardData.productivity_score.factors">{{factor}}</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        
+        <div class="insight-card" *ngIf="dashboardData.mood_prediction">
+          <h3>😊 Prédiction d'Humeur</h3>
+          <div class="mood-details">
+            <div class="mood-display">
+              <div class="mood-icon" [style.color]="dashboardData.mood_prediction.color">
+                {{dashboardData.mood_prediction.icon}}
+              </div>
+              <div class="mood-text">
+                <h4>{{dashboardData.mood_prediction.mood}}</h4>
+                <p>{{dashboardData.mood_prediction.description}}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
